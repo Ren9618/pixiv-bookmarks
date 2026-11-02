@@ -9,7 +9,7 @@
   <title>{{ app_name }}</title>
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/static/style.css?v=20261103-3">
+  <link rel="stylesheet" href="/static/style.css?v=20261103-4">
 </head>
 <body>
   <header class="topbar">
@@ -17,61 +17,62 @@
       <div class="brand-mark" aria-hidden="true">p</div>
       <div class="brand-copy">
         <h1>{{ app_name }}</h1>
-        <p id="accountLine">読み込み中…</p>
+        <p id="accountLine" data-i18n="header.accountLoading">読み込み中…</p>
       </div>
     </div>
     <div class="top-actions">
-      <button id="syncPill" class="sync-pill state-unknown" type="button" aria-label="同期ステータスを開く">
+      <button id="syncPill" class="sync-pill state-unknown" type="button" data-i18n-aria-label="header.syncStatus" aria-label="同期ステータスを開く">
         <span class="sync-dot"></span>
-        <span id="syncLabel">確認中</span>
+        <span id="syncLabel" data-i18n="header.checking">確認中</span>
       </button>
-      <a class="icon-button" href="/logout" title="ログアウト" aria-label="ログアウト">⏻</a>
+      <button id="langToggle" class="lang-button" type="button" lang="en" aria-label="Switch to English">EN</button>
+      <a class="icon-button" href="/logout" data-i18n-title="header.logout" data-i18n-aria-label="header.logout" title="ログアウト" aria-label="ログアウト">⏻</a>
     </div>
   </header>
 
   <main class="page">
-    <section class="toolbar" aria-label="フィルター">
+    <section class="toolbar" data-i18n-aria-label="filter.label" aria-label="フィルター">
       <div class="search-row">
         <label class="search-box">
           <span aria-hidden="true">⌕</span>
-          <input id="searchInput" type="search" placeholder="タイトル・作者・タグを検索" autocomplete="off" enterkeyhint="search">
+          <input id="searchInput" type="search" data-i18n-placeholder="search.placeholder" placeholder="タイトル・作者・タグを検索" autocomplete="off" enterkeyhint="search">
         </label>
-        <select id="sortSelect" aria-label="並び順">
-          <option value="added_desc">追加が新しい順</option>
-          <option value="create_desc">投稿が新しい順</option>
-          <option value="popular_desc">人気順</option>
-          <option value="title_asc">タイトル順</option>
+        <select id="sortSelect" data-i18n-aria-label="sort.label" aria-label="並び順">
+          <option value="added_desc" data-i18n="sort.added">追加が新しい順</option>
+          <option value="create_desc" data-i18n="sort.created">投稿が新しい順</option>
+          <option value="popular_desc" data-i18n="sort.popular">人気順</option>
+          <option value="title_asc" data-i18n="sort.title">タイトル順</option>
         </select>
       </div>
 
       <div class="filter-row">
-        <select id="accountSelect" aria-label="アカウントで絞り込み">
-          <option value="">すべてのアカウント</option>
+        <select id="accountSelect" data-i18n-aria-label="account.filter" aria-label="アカウントで絞り込み">
+          <option value="" data-i18n="account.all">すべてのアカウント</option>
         </select>
-        <button id="favoriteFilter" class="filter-chip" type="button">★ お気に入り</button>
-        <button id="r18Filter" class="filter-chip" type="button">R-18 表示</button>
-        <select id="artistSelect" aria-label="作者で絞り込み">
-          <option value="">すべての作者</option>
+        <button id="favoriteFilter" class="filter-chip" type="button" data-i18n="favorite.filter">★ お気に入り</button>
+        <button id="r18Filter" class="filter-chip" type="button" data-i18n="r18.show">R-18 表示</button>
+        <select id="artistSelect" data-i18n-aria-label="artist.filter" aria-label="作者で絞り込み">
+          <option value="" data-i18n="artist.all">すべての作者</option>
         </select>
-        <button id="clearFilters" class="text-button" type="button">クリア</button>
+        <button id="clearFilters" class="text-button" type="button" data-i18n="filter.clear">クリア</button>
         <span id="resultCount" class="result-count"></span>
       </div>
 
-      <div id="tagBar" class="tag-bar" aria-label="タグ"></div>
+      <div id="tagBar" class="tag-bar" data-i18n-aria-label="tags.label" aria-label="タグ"></div>
     </section>
 
     <section id="grid" class="grid" aria-live="polite"></section>
 
     <div id="empty" class="empty hidden">
       <div class="empty-mark">p</div>
-      <h2 id="emptyTitle">まだ作品がありません</h2>
-      <p id="emptyBody">初回同期が終わると、ここにブックマークが並びます。</p>
-      <button id="emptySync" class="primary-button" type="button">同期状態を確認</button>
+      <h2 id="emptyTitle" data-i18n="empty.noWorks">まだ作品がありません</h2>
+      <p id="emptyBody" data-i18n="empty.noWorksBody">初回同期が終わると、ここにブックマークが並びます。</p>
+      <button id="emptySync" class="primary-button" type="button" data-i18n="empty.checkSync">同期状態を確認</button>
     </div>
 
     <div id="sentinel" class="sentinel">
-      <span id="loadingMore" class="loading-more hidden">読み込み中…</span>
-      <button id="loadMore" class="secondary-button hidden" type="button">もっと見る</button>
+      <span id="loadingMore" class="loading-more hidden" data-i18n="loading.more">読み込み中…</span>
+      <button id="loadMore" class="secondary-button hidden" type="button" data-i18n="loadMore">もっと見る</button>
     </div>
   </main>
 
@@ -79,94 +80,95 @@
     <div class="modal-backdrop" data-close-sync></div>
     <section class="panel">
       <header class="panel-head">
-        <h2 id="syncPanelTitle">同期ステータス</h2>
-        <button class="icon-button" type="button" data-close-sync aria-label="閉じる">×</button>
+        <h2 id="syncPanelTitle" data-i18n="sync.title">同期ステータス</h2>
+        <button class="icon-button" type="button" data-close-sync data-i18n-aria-label="common.close" aria-label="閉じる">×</button>
       </header>
       <div id="syncDetail" class="sync-detail"></div>
       <div id="syncAccounts" class="account-list"></div>
 
       <details id="addAccount" class="add-account">
-        <summary>＋ pixivアカウントを追加</summary>
+        <summary data-i18n="sync.addAccount">＋ pixivアカウントを追加</summary>
         <div class="add-account-body">
-          <p class="add-account-lead">
+          <p class="add-account-lead" data-i18n-html="sync.addAccountLead">
             この画面だけで追加できます。サーバーへのSSHは不要です。
             <code>code</code> は発行から数十秒で失効するため、ログイン後すぐに貼り付けてください。
           </p>
           <ol class="add-account-steps">
-            <li>「ログインURLを発行」を押し、表示されたリンクを開きます。</li>
-            <li><strong>ログインする前に</strong> <kbd>F12</kbd>（Macは <kbd>⌘</kbd>+<kbd>⌥</kbd>+<kbd>I</kbd>）で開発者ツールを開き、<b>Network</b> タブの <b>Preserve log</b> を有効にします。</li>
-            <li>追加したいアカウントでログインします。白いページ、またはpixivアプリへ移動したような画面になりますが、正常です。</li>
-            <li>Network 一覧の <code>callback?…code=…</code> を右クリック →「Copy link address」（Firefoxは「URLをコピー」）でURLをコピーします。検索欄に <code>callback</code> と入れると絞り込めます。</li>
-            <li>下の欄に貼り付けて「このアカウントを追加」を押します。</li>
+            <li data-i18n-html="sync.step1">「ログインURLを発行」を押し、表示されたリンクを開きます。</li>
+            <li data-i18n-html="sync.step2"><strong>ログインする前に</strong> <kbd>F12</kbd>（Macは <kbd>⌘</kbd>+<kbd>⌥</kbd>+<kbd>I</kbd>）で開発者ツールを開き、<b>Network</b> タブの <b>Preserve log</b> を有効にします。</li>
+            <li data-i18n-html="sync.step3">追加したいアカウントでログインします。白いページ、またはpixivアプリへ移動したような画面になりますが、正常です。</li>
+            <li data-i18n-html="sync.step4">Network 一覧の <code>callback?…code=…</code> を右クリック →「Copy link address」（Firefoxは「URLをコピー」）でURLをコピーします。検索欄に <code>callback</code> と入れると絞り込めます。</li>
+            <li data-i18n-html="sync.step5">下の欄に貼り付けて「このアカウントを追加」を押します。</li>
           </ol>
           <div class="add-account-actions">
-            <button id="oauthStart" class="primary-button" type="button">ログインURLを発行</button>
-            <a id="oauthLogin" class="secondary-button add-account-link hidden" href="#" target="_blank" rel="noopener noreferrer">pixivログインを開く</a>
+            <button id="oauthStart" class="primary-button" type="button" data-i18n="oauth.start">ログインURLを発行</button>
+            <a id="oauthLogin" class="secondary-button add-account-link hidden" href="#" target="_blank" rel="noopener noreferrer" data-i18n="oauth.openLogin">pixivログインを開く</a>
             <span id="oauthPending" class="add-account-pending"></span>
           </div>
           <label class="add-account-field">
-            <span>コールバックURL または code</span>
+            <span data-i18n="oauth.field">コールバックURL または code</span>
             <textarea id="oauthCode" rows="2" spellcheck="false" autocomplete="off" placeholder="https://app-api.pixiv.net/web/v1/users/auth/pixiv/callback?…&amp;code=…"></textarea>
           </label>
           <div class="add-account-actions">
-            <button id="oauthExchange" class="primary-button" type="button">このアカウントを追加</button>
-            <button id="oauthPaste" class="text-button hidden" type="button">クリップボードから貼り付け</button>
+            <button id="oauthExchange" class="primary-button" type="button" data-i18n="oauth.exchange">このアカウントを追加</button>
+            <button id="oauthPaste" class="text-button hidden" type="button" data-i18n="oauth.paste">クリップボードから貼り付け</button>
           </div>
           <p id="oauthStatus" class="add-account-note" role="status"></p>
-          <p class="add-account-note">
+          <p class="add-account-note" data-i18n-html="oauth.trouble">
             うまくいかないとき: ログイン済みの状態で「pixivログインを開く」を押すと新しい
             <code>code</code> が発行されます。Network の記録が空の場合は、DevToolsを開いたまま再読み込みしてください。
           </p>
         </div>
       </details>
 
-      <div id="syncScope" class="sync-scope">同期対象: 全アカウント</div>
+      <div id="syncScope" class="sync-scope" data-i18n="sync.scopeAll">同期対象: 全アカウント</div>
       <div class="panel-actions">
-        <button id="syncNow" class="primary-button" type="button">今すぐ同期</button>
-        <button id="reindexNow" class="secondary-button" type="button">再インデックス</button>
-        <button id="fullSync" class="danger-button" type="button">全件再同期</button>
+        <button id="syncNow" class="primary-button" type="button" data-i18n="sync.now">今すぐ同期</button>
+        <button id="reindexNow" class="secondary-button" type="button" data-i18n="sync.reindex">再インデックス</button>
+        <button id="fullSync" class="danger-button" type="button" data-i18n="sync.full">全件再同期</button>
       </div>
       <details class="log-box">
-        <summary>同期ログ</summary>
-        <pre id="logTail">読み込み中…</pre>
+        <summary data-i18n="sync.log">同期ログ</summary>
+        <pre id="logTail" data-i18n="common.loading">読み込み中…</pre>
       </details>
     </section>
   </div>
 
-  <div id="lightbox" class="lightbox hidden" role="dialog" aria-modal="true" aria-label="作品ビューア">
+  <div id="lightbox" class="lightbox hidden" role="dialog" aria-modal="true" data-i18n-aria-label="lightbox.viewer" aria-label="作品ビューア">
     <div class="lb-top">
       <div class="lb-title-wrap">
         <h2 id="lbTitle"></h2>
         <p id="lbArtist"></p>
       </div>
-      <button id="lbClose" class="icon-button lb-close" type="button" aria-label="閉じる">×</button>
+      <button id="lbClose" class="icon-button lb-close" type="button" data-i18n-aria-label="common.close" aria-label="閉じる">×</button>
     </div>
 
     <div id="lbStage" class="lb-stage">
       <img id="lbImage" alt="">
       <video id="lbVideo" playsinline loop controls hidden></video>
-      <div id="lbHint" class="lb-hint">左タップで戻る ・ 右タップで次へ</div>
+      <div id="lbHint" class="lb-hint" data-i18n="lightbox.hint">左タップで戻る ・ 右タップで次へ</div>
     </div>
 
     <div class="lb-bottom">
-      <button id="lbPrev" class="lb-nav" type="button" aria-label="前へ">‹</button>
+      <button id="lbPrev" class="lb-nav" type="button" data-i18n-aria-label="lightbox.prev" aria-label="前へ">‹</button>
       <div class="lb-meta">
         <span id="lbCounter"></span>
         <div id="lbDots" class="lb-dots"></div>
       </div>
-      <button id="lbNext" class="lb-nav" type="button" aria-label="次へ">›</button>
+      <button id="lbNext" class="lb-nav" type="button" data-i18n-aria-label="lightbox.next" aria-label="次へ">›</button>
     </div>
 
     <div class="lb-actions">
-      <button id="lbFavorite" class="lb-action" type="button">☆ お気に入り</button>
-      <a id="lbPixiv" class="lb-action" href="#" target="_blank" rel="noopener noreferrer">pixiv で開く</a>
-      <a id="lbOriginal" class="lb-action" href="#" target="_blank" rel="noopener noreferrer">原寸</a>
-      <a id="lbDownload" class="lb-action" href="#" download>保存</a>
+      <button id="lbFavorite" class="lb-action" type="button" data-i18n="lightbox.favoriteOff">☆ お気に入り</button>
+      <a id="lbPixiv" class="lb-action" href="#" target="_blank" rel="noopener noreferrer" data-i18n="lightbox.pixiv">pixiv で開く</a>
+      <a id="lbOriginal" class="lb-action" href="#" target="_blank" rel="noopener noreferrer" data-i18n="lightbox.original">原寸</a>
+      <a id="lbDownload" class="lb-action" href="#" download data-i18n="lightbox.download">保存</a>
     </div>
   </div>
 
   <div id="toast" class="toast hidden" role="status"></div>
 
-  <script src="/static/app.js?v=20261103-3" defer></script>
+  <script src="/static/i18n.js?v=20261103-4" defer></script>
+  <script src="/static/app.js?v=20261103-4" defer></script>
 </body>
 </html>

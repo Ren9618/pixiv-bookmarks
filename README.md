@@ -17,12 +17,15 @@ A self-hosted, multi-account pixiv bookmark downloader and web viewer.
 - Incremental sync every 15 minutes, plus manual and full resync from the UI.
 - Add additional accounts from the viewer with OAuth + PKCE — no SSH or
   browser automation required.
-- FastAPI viewer with search, tags, artists, account filter, R-18 toggle,
-  local favorites, lightbox, keyboard shortcuts, swipe and tap navigation.
+- FastAPI viewer with a Japanese/English UI, search, tags, artists, account
+  filter, R-18 toggle, local favorites, lightbox, keyboard shortcuts, swipe and
+  tap navigation.
 - SQLite index, on-demand thumbnails, and a responsive PWA manifest.
 - Docker Compose stack; all data stays on your own disk.
 
-The viewer UI is currently in Japanese.
+The viewer and login screen are available in Japanese and English. Use the
+**EN/日本語** button in the header (or on the login screen) to switch; the choice
+is saved in the browser.
 
 ## Architecture
 
@@ -100,16 +103,15 @@ enough for gallery-dl's API authentication.
 
 ### From the viewer (recommended)
 
-1. Open the viewer → **同期ステータス** (sync status) →
-   **＋ pixivアカウントを追加** (add pixiv account).
-2. Press **ログインURLを発行** (issue login URL) and open the displayed link.
+1. Open the viewer → **Sync status** → **+ Add pixiv account**.
+2. Press **Generate login URL** and open the displayed link.
 3. **Before logging in**, open DevTools (`F12`, or `⌘⌥I` on macOS) →
    **Network** and enable **Preserve log**.
 4. Log in with the account you want to add. A white page or a `pixiv://`
    redirect is expected.
 5. In the Network list, right-click the `callback?…code=…` request →
    **Copy link address** (Firefox: **Copy URL**).
-6. Paste it into the viewer and press **このアカウントを追加**.
+6. Paste it into the viewer and press **Add this account**.
 
 The authorization code is valid for only a short time, so paste it
 immediately after logging in.

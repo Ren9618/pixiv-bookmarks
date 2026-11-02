@@ -216,6 +216,31 @@ a {
   border-color: #3b3e4d;
 }
 
+.lang-button {
+  display: inline-grid;
+  place-items: center;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.lang-button:hover {
+  color: var(--text);
+  border-color: #3b3e4d;
+}
+
+.lang-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 /* ---------------------------------------------------------------- layout */
 
 .page {
@@ -1343,6 +1368,11 @@ body.lb-open {
   color: var(--muted-2);
   font-size: 10px;
   line-height: 1.6;
+}
+
+.login-lang {
+  display: block;
+  margin: 16px auto 0;
 }
 
 /* ---------------------------------------------------------------- responsive */

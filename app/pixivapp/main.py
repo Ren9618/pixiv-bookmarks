@@ -205,7 +205,12 @@ async def login_page(request: Request, next: str = "/"):
     return templates.TemplateResponse(
         request,
         "login.html",
-        {"app_name": APP_NAME, "next": _safe_next(next), "error": None},
+        {
+            "app_name": APP_NAME,
+            "next": _safe_next(next),
+            "error": None,
+            "error_code": None,
+        },
     )
 
 
@@ -226,6 +231,7 @@ async def login_submit(request: Request):
             "app_name": APP_NAME,
             "next": next_url,
             "error": "パスワードが違います。",
+            "error_code": "invalid_password",
         },
         status_code=401,
     )
@@ -502,6 +508,7 @@ async def api_oauth_start():
         raise HTTPException(
             status_code=500,
             detail=f"ログインURLを保存できませんでした: {exc}",
+            headers={"X-Error-Code": "store_failed"},
         )
 
 
@@ -527,12 +534,17 @@ async def api_oauth_exchange(request: Request):
         raise HTTPException(
             status_code=400,
             detail="コールバックURLまたは code を貼り付けてください。",
+            headers={"X-Error-Code": "missing_code"},
         )
 
     try:
         result = await run_in_threadpool(oauth.exchange_code, raw_code)
     except oauth.OAuthError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+            headers={"X-Error-Code": exc.code},
+        )
 
     # Make the new account visible in /api/status immediately instead of
     # waiting for the sync container to run its indexer.
@@ -668,6 +680,7 @@ async def api_status():
         "auth_required": status.get("state") == "auth_required"
                          or not accounts,
         "sync_queued": SYNC_REQUEST_PATH.exists(),
+        "sync_account_count": status.get("sync_account_count", 0),
         "interval_minutes": SYNC_INTERVAL_MINUTES,
         "db_updated_at": db_updated,
         "counts": counts,

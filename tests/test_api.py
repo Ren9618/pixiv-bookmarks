@@ -154,6 +154,7 @@ def test_oauth_exchange_endpoint_validates_input(monkeypatch):
                 "/api/accounts/oauth/exchange", json=body
             )
             assert response.status_code == 400
+            assert response.headers["X-Error-Code"] == "missing_code"
             assert "貼り付けて" in response.json()["detail"]
 
         def fail(_code):
@@ -165,4 +166,5 @@ def test_oauth_exchange_endpoint_validates_input(monkeypatch):
         )
 
     assert response.status_code == 400
+    assert response.headers["X-Error-Code"] == "oauth_error"
     assert response.json()["detail"] == "codeが失効しました"

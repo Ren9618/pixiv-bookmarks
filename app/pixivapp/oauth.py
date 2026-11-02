@@ -54,6 +54,10 @@ _lock = threading.Lock()
 class OAuthError(Exception):
     """An error whose message can be shown to the person using the viewer."""
 
+    def __init__(self, message: str, code: str = "oauth_error"):
+        super().__init__(message)
+        self.code = code
+
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
@@ -231,19 +235,24 @@ def exchange_code(raw_code: str) -> dict:
     """Exchange a pasted authorization code and store the new account."""
     code = _extract_code(raw_code)
     if not code:
-        raise OAuthError("コールバックURLまたは code を貼り付けてください。")
+        raise OAuthError(
+            "コールバックURLまたは code を貼り付けてください。",
+            code="missing_code",
+        )
 
     pending = _read_pending()
     if pending is None:
         raise OAuthError(
             "ログインURLの準備データがありません。"
-            "「ログインURLを発行」からやり直してください。"
+            "「ログインURLを発行」からやり直してください。",
+            code="pending_missing",
         )
     verifier = str(pending.get("verifier") or "")
     if not verifier:
         raise OAuthError(
             "ログインURLの準備データが壊れています。"
-            "「ログインURLを発行」からやり直してください。"
+            "「ログインURLを発行」からやり直してください。",
+            code="pending_corrupt",
         )
 
     form = urllib.parse.urlencode({
@@ -279,15 +288,19 @@ def exchange_code(raw_code: str) -> dict:
         )
         if detail:
             message += f"\npixivからの応答: {detail}"
-        raise OAuthError(message)
+        raise OAuthError(message, code="code_rejected")
     except (urllib.error.URLError, OSError) as exc:
-        raise OAuthError(f"pixivへの通信に失敗しました: {exc}")
+        raise OAuthError(
+            f"pixivへの通信に失敗しました: {exc}",
+            code="network_error",
+        )
 
     try:
         data = json.loads(body)
     except ValueError:
         raise OAuthError(
-            "pixivからJSON以外の応答が返りました。時間をおいてやり直してください。"
+            "pixivからJSON以外の応答が返りました。時間をおいてやり直してください。",
+            code="invalid_response",
         )
     if isinstance(data, dict) and isinstance(data.get("response"), dict):
         data = data["response"]
@@ -295,7 +308,8 @@ def exchange_code(raw_code: str) -> dict:
         detail = _pixiv_error(body)
         raise OAuthError(
             "refresh_token を取得できませんでした。"
-            + (f"\npixivからの応答: {detail}" if detail else "")
+            + (f"\npixivからの応答: {detail}" if detail else ""),
+            code="refresh_token_missing",
         )
 
     user = data.get("user") or {}
@@ -304,7 +318,10 @@ def exchange_code(raw_code: str) -> dict:
     except (TypeError, ValueError):
         user_id = 0
     if not user_id:
-        raise OAuthError("pixivのユーザーIDを取得できませんでした。")
+        raise OAuthError(
+            "pixivのユーザーIDを取得できませんでした。",
+            code="user_id_missing",
+        )
 
     payload = {
         "user_id": user_id,

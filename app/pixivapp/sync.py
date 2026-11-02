@@ -323,6 +323,7 @@ def run_once(full: bool = False, account_id: int | None = None) -> int:
             next_run=None,
             account=None,
             accounts=[],
+            sync_account_count=0,
         )
         log.warning("pixiv auth is not configured")
         return 60
@@ -337,6 +338,7 @@ def run_once(full: bool = False, account_id: int | None = None) -> int:
                 message=f"指定されたアカウント {account_id} が見つかりません。",
                 next_run=None,
                 accounts=db.list_accounts(),
+                sync_account_count=0,
             )
             log.warning("requested account %s is not configured", account_id)
             return SYNC_INTERVAL_MINUTES * 60
@@ -355,6 +357,7 @@ def run_once(full: bool = False, account_id: int | None = None) -> int:
         accounts=db.list_accounts(),
         last_error=None,
         full_sync=bool(full),
+        sync_account_count=len(accounts),
     )
 
     results: list[dict] = []
@@ -449,6 +452,7 @@ def run_once(full: bool = False, account_id: int | None = None) -> int:
         accounts=account_rows,
         account_results=results,
         full_sync=bool(full),
+        sync_account_count=len(accounts),
     )
 
     log.info(
@@ -564,6 +568,7 @@ def main() -> None:
         next_run=_iso(_utcnow()) if accounts else None,
         account=None,
         accounts=db.list_accounts(),
+        sync_account_count=0,
     )
 
     next_run = time.monotonic()
@@ -581,7 +586,12 @@ def main() -> None:
         )
         next_run = time.monotonic() + wait
 
-    write_status(state="stopped", message="停止しました", next_run=None)
+    write_status(
+        state="stopped",
+        message="停止しました",
+        next_run=None,
+        sync_account_count=0,
+    )
     log.info("pixiv sync stopped")
 
 

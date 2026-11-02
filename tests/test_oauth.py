@@ -191,6 +191,7 @@ def test_exchange_code_rejects_http_error_without_saving(monkeypatch):
         oauth.exchange_code("used-code")
 
     message = str(excinfo.value)
+    assert excinfo.value.code == "code_rejected"
     assert "HTTP 400" in message
     assert "invalid_grant" in message
     assert not list(ACCOUNTS_DIR.glob("*.json"))
@@ -199,13 +200,15 @@ def test_exchange_code_rejects_http_error_without_saving(monkeypatch):
 
 
 def test_exchange_code_requires_pending_challenge():
-    with pytest.raises(oauth.OAuthError, match="ログインURL"):
+    with pytest.raises(oauth.OAuthError, match="ログインURL") as excinfo:
         oauth.exchange_code("some-code")
+    assert excinfo.value.code == "pending_missing"
 
 
 def test_exchange_code_requires_non_empty_code():
-    with pytest.raises(oauth.OAuthError, match="貼り付けて"):
+    with pytest.raises(oauth.OAuthError, match="貼り付けて") as excinfo:
         oauth.exchange_code("   ")
+    assert excinfo.value.code == "missing_code"
 
 
 def test_exchange_code_rejects_response_without_refresh_token(monkeypatch):
@@ -219,7 +222,8 @@ def test_exchange_code_rejects_response_without_refresh_token(monkeypatch):
 
     monkeypatch.setattr(oauth.urllib.request, "urlopen", fake_urlopen)
 
-    with pytest.raises(oauth.OAuthError, match="refresh_token"):
+    with pytest.raises(oauth.OAuthError, match="refresh_token") as excinfo:
         oauth.exchange_code("some-code")
+    assert excinfo.value.code == "refresh_token_missing"
 
     assert OAUTH_PENDING_PATH.exists()

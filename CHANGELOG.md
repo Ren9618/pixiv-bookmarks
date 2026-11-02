@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Japanese/English UI with a persistent language switch on the viewer and
+  login screen.
+- English translations for sync statuses and OAuth errors.
+
 ## [1.0.0] - 2026-11-03
 
 ### Added
