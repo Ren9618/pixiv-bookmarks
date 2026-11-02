@@ -1,0 +1,27 @@
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+secrets/
+
+# Runtime data if PIXIV_DATA_DIR points inside the repository
+data/
+images/
+thumbs/
+logs/
+state/
+backups/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+*.egg-info/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
