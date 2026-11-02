@@ -17,6 +17,7 @@ from .config import (
     DB_PATH,
     IMAGES_DIR,
     INDEX_LOCK_PATH,
+    THUMBS_DIR,
     ensure_dirs,
 )
 
@@ -29,6 +30,24 @@ _MEDIA_EXTENSIONS = (
     ".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif",
     ".mp4", ".webm", ".mkv", ".m4v",
 )
+_PURGE_EXTENSIONS = set(_MEDIA_EXTENSIONS) | {".json", ".zip", ".part"}
+
+
+def _acquire_index_lock():
+    lock_fp = open(INDEX_LOCK_PATH, "w")
+    try:
+        fcntl.flock(lock_fp, fcntl.LOCK_EX)
+    except Exception:
+        lock_fp.close()
+        raise
+    return lock_fp
+
+
+def _release_index_lock(lock_fp) -> None:
+    try:
+        fcntl.flock(lock_fp, fcntl.LOCK_UN)
+    finally:
+        lock_fp.close()
 
 
 def _as_int(value, default: int = 0) -> int:
@@ -103,10 +122,65 @@ def _resolve_media(json_path: Path) -> Optional[Path]:
     return None
 
 
-def _collect() -> tuple[
+def purge_work_files(work_ids: set[int]) -> int:
+    """Remove media, sidecars, and thumbnails belonging to deleted works."""
+    ids = {int(value) for value in work_ids if int(value) > 0}
+    if not ids:
+        return 0
+
+    removed = 0
+
+    def belongs_to_deleted(name: str, suffix: str) -> bool:
+        prefix, separator, _rest = name.partition("_")
+        return (
+            bool(separator)
+            and prefix.isdigit()
+            and int(prefix) in ids
+            and Path(name).suffix.lower() in suffix
+        )
+
+    if IMAGES_DIR.is_dir():
+        for root, _dirs, files in os.walk(IMAGES_DIR):
+            for filename in files:
+                if not belongs_to_deleted(filename, _PURGE_EXTENSIONS):
+                    continue
+                try:
+                    (Path(root) / filename).unlink()
+                    removed += 1
+                except OSError as exc:
+                    log.warning("could not delete %s: %s", filename, exc)
+
+    if THUMBS_DIR.is_dir():
+        for path in THUMBS_DIR.iterdir():
+            if not path.is_file() or not belongs_to_deleted(
+                path.name, {".jpg", ".jpeg"}
+            ):
+                continue
+            try:
+                path.unlink()
+                removed += 1
+            except OSError as exc:
+                log.warning("could not delete %s: %s", path.name, exc)
+
+    return removed
+
+
+def delete_works_and_purge(work_ids) -> tuple[list[int], int]:
+    """Delete works and their files while the indexer cannot run concurrently."""
+    ensure_dirs()
+    lock_fp = _acquire_index_lock()
+    try:
+        deleted = db.delete_works(work_ids)
+        return deleted, purge_work_files(set(deleted))
+    finally:
+        _release_index_lock(lock_fp)
+
+
+def _collect(tombstones: set[int] | None = None) -> tuple[
     dict[int, dict], dict[tuple[int, int], dict],
     dict[tuple[int, int], int],
 ]:
+    tombstones = tombstones or set()
     works: dict[int, dict] = {}
     pages: dict[tuple[int, int], dict] = {}
     bookmark_seeds: dict[tuple[int, int], int] = {}
@@ -132,6 +206,8 @@ def _collect() -> tuple[
             work_id = _as_int(data.get("id"))
             user = data.get("user")
             if not work_id or not isinstance(user, dict):
+                continue
+            if work_id in tombstones:
                 continue
             if data.get("type") in {"avatar", "background"}:
                 continue
@@ -214,11 +290,19 @@ def index_all() -> dict:
     started = time.time()
     accounts = load_accounts()
 
-    lock_fp = open(INDEX_LOCK_PATH, "w")
+    lock_fp = _acquire_index_lock()
     try:
-        fcntl.flock(lock_fp, fcntl.LOCK_EX)
         db.upsert_accounts(accounts)
-        works, pages, bookmark_seeds = _collect()
+        tombstones = db.deleted_work_ids()
+        if tombstones:
+            # A full resync may re-download a deleted work after its archive
+            # was reset.  Keep the tombstone authoritative and remove any
+            # media that came back.
+            db.delete_works(tombstones)
+            purged = purge_work_files(tombstones)
+            if purged:
+                log.info("removed %d files for deleted works", purged)
+        works, pages, bookmark_seeds = _collect(tombstones)
 
         with db.session(DB_PATH) as conn:
             existing = {
@@ -373,7 +457,4 @@ def index_all() -> dict:
         )
         return result
     finally:
-        try:
-            fcntl.flock(lock_fp, fcntl.LOCK_UN)
-        finally:
-            lock_fp.close()
+        _release_index_lock(lock_fp)

@@ -6,6 +6,7 @@ import logging
 import mimetypes
 import os
 import secrets as pysecrets
+import sqlite3
 import subprocess
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -42,7 +43,7 @@ from .config import (
     VIEWER_SECRET,
     ensure_dirs,
 )
-from .indexer import index_all
+from .indexer import delete_works_and_purge, index_all
 
 log = logging.getLogger("pixiv.viewer")
 Image.MAX_IMAGE_PIXELS = None
@@ -93,6 +94,71 @@ def _parse_account_id(value: Optional[str]) -> Optional[int]:
     if account_id <= 0:
         raise HTTPException(status_code=400, detail="invalid account")
     return account_id
+
+
+def _parse_collection_id(value: Optional[str]) -> Optional[int]:
+    """Return a numeric collection id, treating empty/all as "no filter"."""
+    if value is None:
+        return None
+    value = str(value).strip()
+    if not value or value == "all":
+        return None
+    try:
+        collection_id = int(value)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="invalid collection")
+    if collection_id <= 0:
+        raise HTTPException(status_code=400, detail="invalid collection")
+    return collection_id
+
+
+def _normalize_tags(values) -> list[str]:
+    tags: list[str] = []
+    if not isinstance(values, (list, tuple)):
+        return tags
+    for value in values:
+        tag = str(value or "").strip()[:200]
+        if tag and tag not in tags:
+            tags.append(tag)
+        if len(tags) >= 20:
+            break
+    return tags
+
+
+def _normalize_name(value) -> str:
+    if not isinstance(value, str):
+        raise HTTPException(status_code=400, detail="name is required")
+    name = value.strip()[:80]
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+    return name
+
+
+def _normalize_work_ids(values, limit: int = 2000) -> list[int]:
+    if not isinstance(values, (list, tuple)):
+        raise HTTPException(status_code=400, detail="ids must be a list")
+    ids: list[int] = []
+    seen: set[int] = set()
+    for value in values:
+        try:
+            work_id = int(value)
+        except (TypeError, ValueError):
+            continue
+        if work_id <= 0 or work_id in seen:
+            continue
+        seen.add(work_id)
+        ids.append(work_id)
+        if len(ids) >= limit:
+            break
+    return ids
+
+
+async def _request_body(request: Request) -> dict:
+    try:
+        parsed = await request.json()
+    except Exception:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
 
 
 def _iso_from_ts(timestamp: float) -> str:
@@ -257,11 +323,13 @@ async def index_page(request: Request):
 
 def _where_clause(
     q: str,
-    tag: str,
+    tags: list[str],
+    tag_mode: str,
     artist: Optional[int],
     favorites: bool,
     include_r18: bool,
     account_id: Optional[int] = None,
+    collection_id: Optional[int] = None,
 ) -> tuple[str, list]:
     clauses = ["w.missing = 0"]
     params: list = []
@@ -274,15 +342,31 @@ def _where_clause(
             "WHERE b.work_id = w.id AND b.account_id = ?)"
         )
         params.append(account_id)
+    if collection_id is not None:
+        clauses.append(
+            "EXISTS (SELECT 1 FROM collection_works cw "
+            "WHERE cw.work_id = w.id AND cw.collection_id = ?)"
+        )
+        params.append(collection_id)
     if favorites:
         clauses.append(
             "EXISTS (SELECT 1 FROM favorites f WHERE f.work_id = w.id)"
         )
-    if tag:
-        clauses.append(
-            "EXISTS (SELECT 1 FROM tags t WHERE t.work_id = w.id AND t.tag = ?)"
-        )
-        params.append(tag)
+    if tags:
+        if tag_mode == "and":
+            for tag in tags:
+                clauses.append(
+                    "EXISTS (SELECT 1 FROM tags t "
+                    "WHERE t.work_id = w.id AND t.tag = ?)"
+                )
+                params.append(tag)
+        else:
+            placeholders = ",".join("?" for _ in tags)
+            clauses.append(
+                f"EXISTS (SELECT 1 FROM tags t WHERE t.work_id = w.id "
+                f"AND t.tag IN ({placeholders}))"
+            )
+            params.extend(tags)
     if artist is not None:
         clauses.append("w.artist_id = ?")
         params.append(artist)
@@ -353,9 +437,11 @@ def _row_to_item(row, pages: list[dict], favorited: bool) -> dict:
 @app.get("/api/items")
 async def api_items(
     q: str = "",
-    tag: str = "",
+    tag: Optional[list[str]] = Query(None),
+    tag_mode: str = "and",
     artist: Optional[str] = None,
     account: Optional[str] = None,
+    collection: Optional[str] = None,
     favorites: int = 0,
     r18: int = 0,
     sort: str = "added_desc",
@@ -363,7 +449,10 @@ async def api_items(
     limit: int = Query(60, ge=1, le=100),
 ):
     q = q.strip()[:200]
-    tag = tag.strip()[:200]
+    tags = _normalize_tags(tag)
+    tag_mode = tag_mode.strip().lower()
+    if tag_mode not in {"and", "or"}:
+        raise HTTPException(status_code=400, detail="invalid tag mode")
     artist_id = None
     if artist:
         try:
@@ -371,8 +460,10 @@ async def api_items(
         except ValueError:
             raise HTTPException(status_code=400, detail="invalid artist")
     account_id = _parse_account_id(account)
+    collection_id = _parse_collection_id(collection)
     where_sql, where_params = _where_clause(
-        q, tag, artist_id, bool(favorites), bool(r18), account_id
+        q, tags, tag_mode, artist_id, bool(favorites), bool(r18),
+        account_id, collection_id,
     )
     order_sql = _sort_clause(sort)
 
@@ -431,6 +522,7 @@ async def api_items(
 async def api_tags(
     r18: int = 0,
     account: Optional[str] = None,
+    collection: Optional[str] = None,
     limit: int = Query(60, ge=1, le=200),
 ):
     clauses = ["w.missing = 0"]
@@ -444,6 +536,13 @@ async def api_tags(
             "WHERE b.work_id = w.id AND b.account_id = ?)"
         )
         params.append(account_id)
+    collection_id = _parse_collection_id(collection)
+    if collection_id is not None:
+        clauses.append(
+            "EXISTS (SELECT 1 FROM collection_works cw "
+            "WHERE cw.work_id = w.id AND cw.collection_id = ?)"
+        )
+        params.append(collection_id)
     where_sql = " AND ".join(clauses)
     with db.session(DB_PATH) as conn:
         rows = conn.execute(
@@ -459,6 +558,7 @@ async def api_tags(
 async def api_artists(
     r18: int = 0,
     account: Optional[str] = None,
+    collection: Optional[str] = None,
     limit: int = Query(100, ge=1, le=300),
 ):
     clauses = ["w.missing = 0", "w.artist_id IS NOT NULL", "w.artist_id != 0"]
@@ -472,6 +572,13 @@ async def api_artists(
             "WHERE b.work_id = w.id AND b.account_id = ?)"
         )
         params.append(account_id)
+    collection_id = _parse_collection_id(collection)
+    if collection_id is not None:
+        clauses.append(
+            "EXISTS (SELECT 1 FROM collection_works cw "
+            "WHERE cw.work_id = w.id AND cw.collection_id = ?)"
+        )
+        params.append(collection_id)
     where_sql = " AND ".join(clauses)
     with db.session(DB_PATH) as conn:
         rows = conn.execute(
@@ -595,6 +702,204 @@ async def api_favorite(work_id: int, request: Request):
             )
 
     return {"work_id": work_id, "favorited": desired}
+
+
+@app.post("/api/works/delete")
+async def api_works_delete(request: Request):
+    body = await _request_body(request)
+    ids = _normalize_work_ids(body.get("ids"))
+    if not ids:
+        raise HTTPException(
+            status_code=400,
+            detail="削除する作品を選択してください。",
+            headers={"X-Error-Code": "works_required"},
+        )
+
+    deleted, removed = await run_in_threadpool(delete_works_and_purge, ids)
+    return {
+        "deleted": len(deleted),
+        "files_removed": removed,
+        "ids": deleted,
+    }
+
+
+@app.get("/api/collections")
+async def api_collections():
+    return {"collections": db.list_collections()}
+
+
+@app.post("/api/collections")
+async def api_collection_create(request: Request):
+    body = await _request_body(request)
+    name = _normalize_name(body.get("name"))
+    try:
+        collection = await run_in_threadpool(db.create_collection, name)
+    except sqlite3.IntegrityError:
+        raise HTTPException(
+            status_code=409,
+            detail="同じ名前のコレクションがあります。",
+            headers={"X-Error-Code": "name_exists"},
+        )
+    return {"collection": collection}
+
+
+@app.post("/api/collections/{collection_id}/rename")
+async def api_collection_rename(collection_id: int, request: Request):
+    body = await _request_body(request)
+    name = _normalize_name(body.get("name"))
+    try:
+        renamed = await run_in_threadpool(
+            db.rename_collection, collection_id, name
+        )
+    except sqlite3.IntegrityError:
+        raise HTTPException(
+            status_code=409,
+            detail="同じ名前のコレクションがあります。",
+            headers={"X-Error-Code": "name_exists"},
+        )
+    if not renamed:
+        raise HTTPException(
+            status_code=404,
+            detail="コレクションが見つかりません。",
+            headers={"X-Error-Code": "not_found"},
+        )
+    return {"collection": db.get_collection(collection_id)}
+
+
+@app.delete("/api/collections/{collection_id}")
+async def api_collection_delete(collection_id: int):
+    deleted = await run_in_threadpool(db.delete_collection, collection_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=404,
+            detail="コレクションが見つかりません。",
+            headers={"X-Error-Code": "not_found"},
+        )
+    return {"deleted": True}
+
+
+@app.post("/api/collections/{collection_id}/works")
+async def api_collection_add_works(collection_id: int, request: Request):
+    if await run_in_threadpool(db.get_collection, collection_id) is None:
+        raise HTTPException(
+            status_code=404,
+            detail="コレクションが見つかりません。",
+            headers={"X-Error-Code": "not_found"},
+        )
+
+    body = await _request_body(request)
+    matched = 0
+    ids: list[int] = []
+    if "ids" in body:
+        ids = _normalize_work_ids(body.get("ids"))
+        matched = len(ids)
+    else:
+        tags = _normalize_tags(body.get("tags"))
+        if not tags:
+            raise HTTPException(
+                status_code=400,
+                detail="追加するタグを選択してください。",
+                headers={"X-Error-Code": "tags_required"},
+            )
+        tag_mode = str(body.get("tag_mode") or "and").strip().lower()
+        if tag_mode not in {"and", "or"}:
+            raise HTTPException(status_code=400, detail="invalid tag mode")
+        where_sql, where_params = _where_clause(
+            "", tags, tag_mode, None, False, True
+        )
+        with db.session(DB_PATH) as conn:
+            ids = [
+                int(row[0])
+                for row in conn.execute(
+                    f"SELECT w.id FROM works w WHERE {where_sql}", where_params
+                )
+            ]
+        matched = len(ids)
+
+    if not ids:
+        raise HTTPException(
+            status_code=400,
+            detail="追加できる作品がありません。",
+            headers={"X-Error-Code": "works_required"},
+        )
+
+    added = await run_in_threadpool(
+        db.add_collection_works, collection_id, ids
+    )
+    return {
+        "matched": matched,
+        "added": added,
+        "collection": db.get_collection(collection_id),
+    }
+
+
+@app.delete("/api/collections/{collection_id}/works")
+async def api_collection_remove_works(collection_id: int, request: Request):
+    if await run_in_threadpool(db.get_collection, collection_id) is None:
+        raise HTTPException(
+            status_code=404,
+            detail="コレクションが見つかりません。",
+            headers={"X-Error-Code": "not_found"},
+        )
+    body = await _request_body(request)
+    ids = _normalize_work_ids(body.get("ids"))
+    if not ids:
+        raise HTTPException(
+            status_code=400,
+            detail="外す作品を選択してください。",
+            headers={"X-Error-Code": "works_required"},
+        )
+    removed = await run_in_threadpool(
+        db.remove_collection_works, collection_id, ids
+    )
+    return {
+        "removed": removed,
+        "collection": db.get_collection(collection_id),
+    }
+
+
+@app.get("/api/tag-sets")
+async def api_tag_sets():
+    return {"tag_sets": db.list_tag_sets()}
+
+
+@app.post("/api/tag-sets")
+async def api_tag_set_create(request: Request):
+    body = await _request_body(request)
+    name = _normalize_name(body.get("name"))
+    tags = _normalize_tags(body.get("tags"))
+    if not tags:
+        raise HTTPException(
+            status_code=400,
+            detail="保存するタグを選択してください。",
+            headers={"X-Error-Code": "tags_required"},
+        )
+    match_mode = str(body.get("match_mode") or "and").strip().lower()
+    if match_mode not in {"and", "or"}:
+        raise HTTPException(status_code=400, detail="invalid tag mode")
+    try:
+        tag_set = await run_in_threadpool(
+            db.create_tag_set, name, tags, match_mode
+        )
+    except sqlite3.IntegrityError:
+        raise HTTPException(
+            status_code=409,
+            detail="同じ名前のタグセットがあります。",
+            headers={"X-Error-Code": "name_exists"},
+        )
+    return {"tag_set": tag_set}
+
+
+@app.delete("/api/tag-sets/{tag_set_id}")
+async def api_tag_set_delete(tag_set_id: int):
+    deleted = await run_in_threadpool(db.delete_tag_set, tag_set_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=404,
+            detail="タグセットが見つかりません。",
+            headers={"X-Error-Code": "not_found"},
+        )
+    return {"deleted": True}
 
 
 @app.post("/api/reindex")

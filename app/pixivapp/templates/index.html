@@ -9,12 +9,11 @@
   <title>{{ app_name }}</title>
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/static/style.css?v=20261103-5">
+  <link rel="stylesheet" href="/static/style.css?v=20261103-7">
 </head>
 <body>
   <header class="topbar">
     <div class="brand">
-      <div class="brand-mark" aria-hidden="true">p</div>
       <div class="brand-copy">
         <h1>{{ app_name }}</h1>
         <p id="accountLine" data-i18n="header.accountLoading">読み込み中…</p>
@@ -26,7 +25,12 @@
         <span id="syncLabel" data-i18n="header.checking">確認中</span>
       </button>
       <button id="langToggle" class="lang-button" type="button" lang="en" aria-label="Switch to English">EN</button>
-      <a class="icon-button" href="/logout" data-i18n-title="header.logout" data-i18n-aria-label="header.logout" title="ログアウト" aria-label="ログアウト">⏻</a>
+      <a class="icon-button" href="/logout" data-i18n-title="header.logout" data-i18n-aria-label="header.logout" title="ログアウト" aria-label="ログアウト">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" focusable="false">
+          <path d="M12 3v8"></path>
+          <path d="M6.4 6.4a8 8 0 1 0 11.2 0"></path>
+        </svg>
+      </a>
     </div>
   </header>
 
@@ -49,17 +53,34 @@
         <select id="accountSelect" data-i18n-aria-label="account.filter" aria-label="アカウントで絞り込み">
           <option value="" data-i18n="account.all">すべてのアカウント</option>
         </select>
+        <select id="collectionSelect" class="collection-select" data-i18n-aria-label="collection.filter" aria-label="コレクションで絞り込み">
+          <option value="" data-i18n="collection.all">すべてのコレクション</option>
+        </select>
         <button id="favoriteFilter" class="filter-chip" type="button" data-i18n="favorite.filter">★ お気に入り</button>
         <button id="r18Filter" class="filter-chip" type="button" data-i18n="r18.show">R-18 表示</button>
         <select id="artistSelect" data-i18n-aria-label="artist.filter" aria-label="作者で絞り込み">
           <option value="" data-i18n="artist.all">すべての作者</option>
         </select>
+        <button id="selectModeToggle" class="filter-chip" type="button" aria-pressed="false" data-i18n="selection.enter">選択</button>
+        <button id="groupButton" class="filter-chip" type="button" data-i18n="group.open">グループ</button>
         <button id="clearFilters" class="text-button" type="button" data-i18n="filter.clear">クリア</button>
         <span id="resultCount" class="result-count"></span>
       </div>
 
-      <div id="tagBar" class="tag-bar" data-i18n-aria-label="tags.label" aria-label="タグ"></div>
+      <div class="tag-row">
+        <div id="tagBar" class="tag-bar" data-i18n-aria-label="tags.label" aria-label="タグ"></div>
+        <button id="tagModeToggle" class="tag-mode hidden" type="button" aria-label="タグの一致条件">AND</button>
+      </div>
     </section>
+
+    <div id="bulkBar" class="bulk-bar hidden" role="toolbar" data-i18n-aria-label="selection.toolbar" aria-label="選択した作品の操作">
+      <span id="bulkCount" class="bulk-count"></span>
+      <button id="bulkSelectAll" class="text-button" type="button" data-i18n="selection.selectAllLoaded">表示中をすべて選択</button>
+      <button id="bulkAddCollection" class="secondary-button" type="button" data-i18n="selection.addToCollection">コレクションに追加</button>
+      <button id="bulkRemoveCollection" class="danger-button hidden" type="button" data-i18n="selection.removeFromCollection">コレクションから外す</button>
+      <button id="bulkDelete" class="danger-button" type="button" data-i18n="selection.delete">削除</button>
+      <button id="bulkCancel" class="text-button" type="button" data-i18n="selection.exit">選択を終了</button>
+    </div>
 
     <section id="grid" class="grid" aria-live="polite"></section>
 
@@ -134,6 +155,65 @@
     </section>
   </div>
 
+  <div id="groupPanel" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="groupPanelTitle">
+    <div class="modal-backdrop" data-close-group></div>
+    <section class="panel group-panel">
+      <header class="panel-head">
+        <h2 id="groupPanelTitle" data-i18n="group.title">グループ</h2>
+        <button class="icon-button" type="button" data-close-group data-i18n-aria-label="common.close" aria-label="閉じる">×</button>
+      </header>
+
+      <div class="group-tabs" role="tablist" aria-label="グループの種類">
+        <button id="collectionsTabButton" class="group-tab active" type="button" role="tab" aria-selected="true" data-group-tab="collections" data-i18n="group.tab.collections">作品コレクション</button>
+        <button id="tagSetsTabButton" class="group-tab" type="button" role="tab" aria-selected="false" data-group-tab="tagSets" data-i18n="group.tab.tagSets">タグセット</button>
+      </div>
+
+      <section id="collectionsTab" class="group-tab-panel">
+        <p id="selectionHint" class="panel-note"></p>
+
+        <div class="group-create">
+          <input id="collectionName" type="text" maxlength="80" autocomplete="off" data-i18n-placeholder="group.collection.placeholder" placeholder="例: お気に入りイラスト">
+          <button id="collectionCreate" class="primary-button" type="button" data-i18n="group.collection.create">作成</button>
+        </div>
+
+        <div id="collectionList" class="group-list"></div>
+
+        <div class="group-section">
+          <h3 data-i18n="group.tagBulk.title">タグから一括追加</h3>
+          <div class="group-inline">
+            <label class="group-field">
+              <span data-i18n="group.tagBulk.target">追加先</span>
+              <select id="tagBulkCollection"></select>
+            </label>
+            <label class="group-field group-field-small">
+              <span data-i18n="group.tagBulk.mode">一致条件</span>
+              <select id="tagBulkMode">
+                <option value="and" data-i18n="group.mode.and">すべて含む (AND)</option>
+                <option value="or" data-i18n="group.mode.or">いずれかを含む (OR)</option>
+              </select>
+            </label>
+          </div>
+          <div id="tagBulkChips" class="tag-bar group-tag-chips" data-i18n-aria-label="group.tagBulk.tags" aria-label="追加するタグ"></div>
+          <div class="group-create">
+            <input id="tagBulkInput" type="text" maxlength="200" autocomplete="off" data-i18n-placeholder="group.tagBulk.inputPlaceholder" placeholder="タグを入力して追加">
+            <button id="tagBulkInputAdd" class="secondary-button" type="button" data-i18n="group.tagBulk.addTag">タグを追加</button>
+            <button id="tagBulkAdd" class="primary-button" type="button" data-i18n="group.tagBulk.add">一致する作品を追加</button>
+          </div>
+          <p id="tagBulkStatus" class="group-status" role="status"></p>
+        </div>
+      </section>
+
+      <section id="tagSetsTab" class="group-tab-panel hidden">
+        <p id="tagSetCurrent" class="panel-note"></p>
+        <div class="group-create">
+          <input id="tagSetName" type="text" maxlength="80" autocomplete="off" data-i18n-placeholder="group.tagSets.placeholder" placeholder="例: 風景">
+          <button id="tagSetSave" class="primary-button" type="button" data-i18n="group.tagSets.save">現在のタグを保存</button>
+        </div>
+        <div id="tagSetList" class="group-list"></div>
+      </section>
+    </section>
+  </div>
+
   <div id="lightbox" class="lightbox hidden" role="dialog" aria-modal="true" data-i18n-aria-label="lightbox.viewer" aria-label="作品ビューア">
     <div class="lb-top">
       <div class="lb-title-wrap">
@@ -163,12 +243,13 @@
       <a id="lbPixiv" class="lb-action" href="#" target="_blank" rel="noopener noreferrer" data-i18n="lightbox.pixiv">pixiv で開く</a>
       <a id="lbOriginal" class="lb-action" href="#" target="_blank" rel="noopener noreferrer" data-i18n="lightbox.original">原寸</a>
       <a id="lbDownload" class="lb-action" href="#" download data-i18n="lightbox.download">保存</a>
+      <button id="lbDelete" class="lb-action danger" type="button" data-i18n="lightbox.delete">ローカル削除</button>
     </div>
   </div>
 
   <div id="toast" class="toast hidden" role="status"></div>
 
-  <script src="/static/i18n.js?v=20261103-5" defer></script>
-  <script src="/static/app.js?v=20261103-5" defer></script>
+  <script src="/static/i18n.js?v=20261103-7" defer></script>
+  <script src="/static/app.js?v=20261103-7" defer></script>
 </body>
 </html>

@@ -3,7 +3,8 @@
 const el = (id) => document.getElementById(id);
 const state = {
   q: "",
-  tag: "",
+  tags: [],
+  tagMode: "and",
   artist: "",
   favorites: false,
   r18: false,
@@ -17,6 +18,16 @@ const state = {
   status: null,
   accounts: [],
   account: "",
+  collections: [],
+  collection: "",
+  tagSets: [],
+  tagOptions: [],
+  selectMode: false,
+  selection: new Set(),
+  bulkTags: new Set(),
+  bulkTagMode: "and",
+  bulkCollection: "",
+  groupTab: "collections",
   lb: null,
 };
 
@@ -25,12 +36,14 @@ const sentinel = el("sentinel");
 const searchInput = el("searchInput");
 const sortSelect = el("sortSelect");
 const accountSelect = el("accountSelect");
+const collectionSelect = el("collectionSelect");
 const artistSelect = el("artistSelect");
 const favoriteFilter = el("favoriteFilter");
 const r18Filter = el("r18Filter");
 const resultCount = el("resultCount");
 const emptyBox = el("empty");
 const syncPanel = el("syncPanel");
+const groupPanel = el("groupPanel");
 const lightbox = el("lightbox");
 const lbImage = el("lbImage");
 const lbVideo = el("lbVideo");
@@ -43,6 +56,13 @@ const currentLanguage = () => I18n.getLang();
 const isJapanese = () => currentLanguage() === "ja";
 const separator = () => t("common.separator");
 const formatNumber = (value) => I18n.formatNumber(value);
+
+function node(tagName, className, text) {
+  const element = document.createElement(tagName);
+  if (className) element.className = className;
+  if (text !== undefined) element.textContent = text;
+  return element;
+}
 
 function countLabel(value, singular, plural, japaneseUnit) {
   const number = Number(value || 0);
@@ -226,6 +246,74 @@ function setAccount(value) {
   resetAndLoad();
 }
 
+function updateCollectionOptions(force = false) {
+  const signature = state.collections
+    .map((collection) => `${collection.id}|${collection.name}|${collection.works}`)
+    .join(";");
+  if (force || collectionSelect.dataset.signature !== signature) {
+    collectionSelect.innerHTML = "";
+    const all = document.createElement("option");
+    all.value = "";
+    all.textContent = state.collections.length
+      ? t("collection.all")
+      : t("collection.none");
+    collectionSelect.appendChild(all);
+    state.collections.forEach((collection) => {
+      const option = document.createElement("option");
+      option.value = String(collection.id);
+      option.textContent = `${collection.name} (${formatNumber(collection.works)})`;
+      collectionSelect.appendChild(option);
+    });
+    collectionSelect.dataset.signature = signature;
+  }
+  collectionSelect.value = state.collection;
+}
+
+function setCollection(value) {
+  const next = state.collections.some(
+    (collection) => String(collection.id) === String(value)
+  )
+    ? String(value)
+    : "";
+  collectionSelect.value = next;
+  if (next === state.collection) {
+    updateBulkBar();
+    return;
+  }
+
+  state.collection = next;
+  if (next) localStorage.setItem("pixiv-viewer-collection", next);
+  else localStorage.removeItem("pixiv-viewer-collection");
+
+  loadTags();
+  loadArtists();
+  resetAndLoad();
+  updateBulkBar();
+}
+
+async function loadCollections() {
+  try {
+    const data = await api("/api/collections");
+    state.collections = Array.isArray(data.collections) ? data.collections : [];
+    let changed = false;
+    if (
+      state.collection
+      && !state.collections.some(
+        (collection) => String(collection.id) === state.collection
+      )
+    ) {
+      state.collection = "";
+      localStorage.removeItem("pixiv-viewer-collection");
+      changed = true;
+    }
+    updateCollectionOptions(true);
+    if (changed && (state.items.length || state.offset)) resetAndLoad();
+    if (!groupPanel.classList.contains("hidden")) renderGroupPanel();
+  } catch (error) {
+    console.error(error);
+  }
+}
+
 function formatDuration(seconds) {
   if (seconds === null || seconds === undefined) return "—";
   const total = Math.max(0, Math.round(Number(seconds)));
@@ -251,6 +339,132 @@ function updateFilterUI() {
   favoriteFilter.setAttribute("aria-pressed", String(state.favorites));
   r18Filter.setAttribute("aria-pressed", String(state.r18));
   r18Filter.textContent = state.r18 ? t("r18.hide") : t("r18.show");
+  updateTagModeUI();
+}
+
+function updateTagModeUI() {
+  const button = el("tagModeToggle");
+  const visible = state.tags.length > 1;
+  button.classList.toggle("hidden", !visible);
+  button.classList.toggle("active", state.tagMode === "or");
+  button.textContent = state.tagMode === "and"
+    ? t("tag.mode.and")
+    : t("tag.mode.or");
+  button.title = state.tagMode === "and"
+    ? t("tag.mode.andTitle")
+    : t("tag.mode.orTitle");
+  button.setAttribute(
+    "aria-label",
+    state.tagMode === "and" ? t("tag.mode.andTitle") : t("tag.mode.orTitle")
+  );
+}
+
+function updateSelectionCard(workId) {
+  const selected = state.selection.has(workId);
+  const card = grid.querySelector(`.card[data-work-id="${workId}"]`);
+  if (!card) return;
+  card.classList.toggle("selected", selected);
+  const checkbox = card.querySelector(".card-select");
+  if (!checkbox) return;
+  checkbox.textContent = selected ? "✓" : "";
+  checkbox.setAttribute("aria-pressed", String(selected));
+  checkbox.setAttribute(
+    "aria-label",
+    t(selected ? "selection.removeOne" : "selection.addOne")
+  );
+}
+
+function updateBulkBar() {
+  const bar = el("bulkBar");
+  bar.classList.toggle("hidden", !state.selectMode);
+  el("bulkCount").textContent = state.selection.size
+    ? t("selection.count", { count: formatNumber(state.selection.size) })
+    : "";
+  const allSelected = state.items.length > 0
+    && state.items.every((item) => state.selection.has(item.id));
+  el("bulkSelectAll").textContent = allSelected
+    ? t("selection.clearLoaded")
+    : t("selection.selectAllLoaded");
+  el("bulkRemoveCollection").classList.toggle("hidden", !state.collection);
+  el("bulkDelete").disabled = state.selection.size === 0;
+  el("bulkAddCollection").disabled = state.selection.size === 0;
+  const toggle = el("selectModeToggle");
+  toggle.classList.toggle("active", state.selectMode);
+  toggle.setAttribute("aria-pressed", String(state.selectMode));
+  toggle.textContent = state.selectMode ? t("selection.exit") : t("selection.enter");
+  document.body.classList.toggle("select-mode", state.selectMode);
+}
+
+function setSelectMode(enabled) {
+  state.selectMode = Boolean(enabled);
+  if (!state.selectMode) state.selection.clear();
+  if (state.items.length) {
+    grid.innerHTML = "";
+    renderCards(state.items, 0);
+  }
+  updateBulkBar();
+}
+
+function clearSelection() {
+  state.selection.clear();
+  grid.querySelectorAll(".card.selected").forEach((card) => {
+    card.classList.remove("selected");
+    const checkbox = card.querySelector(".card-select");
+    if (!checkbox) return;
+    checkbox.textContent = "";
+    checkbox.setAttribute("aria-pressed", "false");
+    checkbox.setAttribute("aria-label", t("selection.addOne"));
+  });
+  updateBulkBar();
+}
+
+function toggleSelected(workId) {
+  const id = Number(workId);
+  if (!Number.isFinite(id)) return;
+  if (state.selection.has(id)) state.selection.delete(id);
+  else state.selection.add(id);
+  updateSelectionCard(id);
+  updateBulkBar();
+}
+
+function toggleSelectAllLoaded() {
+  const allSelected = state.items.length > 0
+    && state.items.every((item) => state.selection.has(item.id));
+  state.items.forEach((item) => {
+    if (allSelected) state.selection.delete(item.id);
+    else state.selection.add(item.id);
+  });
+  if (state.items.length) {
+    grid.innerHTML = "";
+    renderCards(state.items, 0);
+  }
+  updateBulkBar();
+}
+
+async function deleteWorks(ids, confirmation) {
+  const unique = [...new Set(ids.map(Number).filter((id) => id > 0))];
+  if (!unique.length) {
+    showToast(t("selection.required"));
+    return false;
+  }
+  if (confirmation && !confirm(confirmation)) return false;
+
+  try {
+    const result = await api("/api/works/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: unique }),
+    });
+    showToast(t("selection.deleted", {
+      count: formatNumber(result.deleted ?? unique.length),
+    }));
+    await Promise.all([loadCollections(), loadTags(), loadArtists(), refreshStatus()]);
+    resetAndLoad();
+    return true;
+  } catch (error) {
+    showToast(error.message || t("selection.deleteError"));
+    return false;
+  }
 }
 
 function resetAndLoad() {
@@ -261,6 +475,7 @@ function resetAndLoad() {
   state.loading = false;
   grid.innerHTML = "";
   emptyBox.classList.add("hidden");
+  clearSelection();
   updateResultCount();
   loadItems(requestSeq);
 }
@@ -268,15 +483,17 @@ function resetAndLoad() {
 function queryParams() {
   const params = new URLSearchParams({
     q: state.q,
-    tag: state.tag,
+    tag_mode: state.tagMode,
     favorites: state.favorites ? "1" : "0",
     r18: state.r18 ? "1" : "0",
     sort: state.sort,
     offset: String(state.offset),
     limit: String(state.limit),
   });
+  state.tags.forEach((tag) => params.append("tag", tag));
   if (state.artist) params.set("artist", state.artist);
   if (state.account) params.set("account", state.account);
+  if (state.collection) params.set("collection", state.collection);
   return params;
 }
 
@@ -329,6 +546,8 @@ function renderCards(items, startIndex) {
     card.className = "card";
     card.tabIndex = 0;
     card.dataset.index = String(startIndex + offset);
+    card.dataset.workId = String(item.id);
+    if (state.selection.has(item.id)) card.classList.add("selected");
     const fallbackTitle = t("card.untitled", { id: item.id });
     card.setAttribute("aria-label", item.title || fallbackTitle);
 
@@ -345,6 +564,21 @@ function renderCards(items, startIndex) {
     const shade = document.createElement("div");
     shade.className = "card-shade";
     thumb.appendChild(shade);
+
+    if (state.selectMode) {
+      const selected = state.selection.has(item.id);
+      const checkbox = document.createElement("button");
+      checkbox.type = "button";
+      checkbox.className = "card-select";
+      checkbox.dataset.selectId = String(item.id);
+      checkbox.textContent = selected ? "✓" : "";
+      checkbox.setAttribute("aria-pressed", String(selected));
+      checkbox.setAttribute(
+        "aria-label",
+        t(selected ? "selection.removeOne" : "selection.addOne")
+      );
+      thumb.appendChild(checkbox);
+    }
 
     const badgeParts = [];
     if (item.is_video) badgeParts.push(t("card.video"));
@@ -478,7 +712,7 @@ function openLightbox(index) {
   if (!state.items[index]) return;
   state.lb = { index, page: 0 };
   lightbox.classList.remove("hidden");
-  document.body.classList.add("lb-open");
+  updateBodyLock();
   renderLightbox();
   clearTimeout(hintTimer);
   lbHint.classList.remove("hidden");
@@ -487,7 +721,7 @@ function openLightbox(index) {
 
 function closeLightbox() {
   lightbox.classList.add("hidden");
-  document.body.classList.remove("lb-open");
+  updateBodyLock();
   lbVideo.pause();
   lbVideo.removeAttribute("src");
   lbImage.removeAttribute("src");
@@ -828,21 +1062,28 @@ async function loadTags() {
       limit: "60",
     });
     if (state.account) params.set("account", state.account);
+    if (state.collection) params.set("collection", state.collection);
     const data = await api(`/api/tags?${params.toString()}`);
+    state.tagOptions = data.tags;
     const bar = el("tagBar");
     bar.innerHTML = "";
-    if (state.tag && !data.tags.some((entry) => entry.tag === state.tag)) {
-      data.tags.unshift({ tag: state.tag, count: 0 });
-    }
-    data.tags.forEach((entry) => {
+    const entries = [...data.tags];
+    state.tags.forEach((tag) => {
+      if (!entries.some((entry) => entry.tag === tag)) {
+        entries.unshift({ tag, count: 0 });
+      }
+    });
+    entries.forEach((entry) => {
       const button = document.createElement("button");
       button.type = "button";
-      button.className = "tag-chip" + (entry.tag === state.tag ? " active" : "");
+      button.className = "tag-chip" + (state.tags.includes(entry.tag) ? " active" : "");
       button.dataset.tag = entry.tag;
       button.textContent = `#${entry.tag}`;
       if (entry.count) button.title = workCount(entry.count);
       bar.appendChild(button);
     });
+    updateTagModeUI();
+    if (!groupPanel.classList.contains("hidden")) renderTagBulk();
   } catch (error) {
     console.error(error);
   }
@@ -855,6 +1096,7 @@ async function loadArtists() {
       limit: "100",
     });
     if (state.account) params.set("account", state.account);
+    if (state.collection) params.set("collection", state.collection);
     const data = await api(`/api/artists?${params.toString()}`);
     const selected = state.artist;
     artistSelect.innerHTML = "";
@@ -888,6 +1130,465 @@ async function loadLog() {
     log.scrollTop = log.scrollHeight;
   } catch (error) {
     el("logTail").textContent = error.message || t("log.loadError");
+  }
+}
+
+function updateBodyLock() {
+  const locked = !syncPanel.classList.contains("hidden")
+    || !groupPanel.classList.contains("hidden")
+    || !lightbox.classList.contains("hidden");
+  document.body.classList.toggle("lb-open", locked);
+}
+
+function updateGroupSelectionHint() {
+  el("selectionHint").textContent = state.selection.size
+    ? t("group.selectionHint", {
+      count: formatNumber(state.selection.size),
+    })
+    : t("group.noSelectionHint");
+}
+
+function setGroupTab(tab) {
+  state.groupTab = tab === "tagSets" ? "tagSets" : "collections";
+  document.querySelectorAll("[data-group-tab]").forEach((button) => {
+    const active = button.dataset.groupTab === state.groupTab;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", String(active));
+  });
+  el("collectionsTab").classList.toggle("hidden", state.groupTab !== "collections");
+  el("tagSetsTab").classList.toggle("hidden", state.groupTab !== "tagSets");
+}
+
+async function openGroupPanel(tab = "collections") {
+  groupPanel.classList.remove("hidden");
+  setGroupTab(tab || state.groupTab);
+  renderGroupPanel();
+  loadCollections();
+  loadTagSets();
+  updateBodyLock();
+  if (state.selection.size === 0 && state.groupTab === "collections") {
+    el("collectionName").focus();
+  }
+}
+
+function closeGroupPanel() {
+  groupPanel.classList.add("hidden");
+  updateBodyLock();
+}
+
+function renderCollections() {
+  const container = el("collectionList");
+  container.innerHTML = "";
+  if (!state.collections.length) {
+    container.appendChild(node("p", "group-empty", t("group.collection.empty")));
+    return;
+  }
+
+  state.collections.forEach((collection) => {
+    const active = String(collection.id) === state.collection;
+    const row = node("div", "group-row" + (active ? " active" : ""));
+    const info = node("div", "group-row-info");
+    info.append(
+      node("strong", "", collection.name),
+      node("span", "group-meta", workCount(collection.works))
+    );
+
+    const actions = node("div", "group-row-actions");
+    const view = node(
+      "button",
+      "group-action",
+      active ? t("group.collection.viewing") : t("group.collection.view")
+    );
+    view.type = "button";
+    view.dataset.collectionView = String(collection.id);
+    view.disabled = active;
+    actions.appendChild(view);
+
+    if (state.selection.size) {
+      const add = node(
+        "button",
+        "group-action primary",
+        t("group.collection.addSelected", {
+          count: formatNumber(state.selection.size),
+        })
+      );
+      add.type = "button";
+      add.dataset.collectionAdd = String(collection.id);
+      actions.appendChild(add);
+    }
+
+    const rename = node(
+      "button", "group-action", t("group.collection.rename")
+    );
+    rename.type = "button";
+    rename.dataset.collectionRename = String(collection.id);
+    actions.appendChild(rename);
+
+    const remove = node(
+      "button", "group-action danger", t("group.collection.delete")
+    );
+    remove.type = "button";
+    remove.dataset.collectionDelete = String(collection.id);
+    actions.appendChild(remove);
+
+    row.append(info, actions);
+    container.appendChild(row);
+  });
+}
+
+function renderTagBulk() {
+  const target = el("tagBulkCollection");
+  target.innerHTML = "";
+  if (!state.collections.length) {
+    state.bulkCollection = "";
+    target.appendChild(node("option", "", t("collection.none")));
+    target.disabled = true;
+    const status = el("tagBulkStatus");
+    status.textContent = t("group.tagBulk.noCollections");
+    status.className = "group-status";
+    status.dataset.kind = "no-collections";
+    el("tagBulkAdd").disabled = true;
+  } else {
+    const status = el("tagBulkStatus");
+    if (status.dataset.kind === "no-collections") {
+      status.textContent = "";
+      status.className = "group-status";
+      delete status.dataset.kind;
+    }
+    target.disabled = false;
+    state.collections.forEach((collection) => {
+      const option = node(
+        "option", "", `${collection.name} (${formatNumber(collection.works)})`
+      );
+      option.value = String(collection.id);
+      target.appendChild(option);
+    });
+    if (
+      !state.collections.some(
+        (collection) => String(collection.id) === state.bulkCollection
+      )
+    ) {
+      state.bulkCollection = String(state.collections[0].id);
+    }
+    target.value = state.bulkCollection;
+    el("tagBulkAdd").disabled = state.bulkTags.size === 0;
+  }
+
+  el("tagBulkMode").value = state.bulkTagMode;
+  const chips = el("tagBulkChips");
+  chips.innerHTML = "";
+  const entries = [...state.tagOptions];
+  state.bulkTags.forEach((tag) => {
+    if (!entries.some((entry) => entry.tag === tag)) {
+      entries.unshift({ tag, count: 0 });
+    }
+  });
+  entries.forEach((entry) => {
+    const chip = node(
+      "button",
+      "tag-chip" + (state.bulkTags.has(entry.tag) ? " active" : ""),
+      `#${entry.tag}`
+    );
+    chip.type = "button";
+    chip.dataset.bulkTag = entry.tag;
+    if (entry.count) chip.title = workCount(entry.count);
+    chips.appendChild(chip);
+  });
+}
+
+function renderTagSets() {
+  const current = el("tagSetCurrent");
+  current.textContent = state.tags.length
+    ? t("group.tagSets.current", {
+      tags: state.tags.map((tag) => `#${tag}`).join(" "),
+    })
+    : t("group.tagSets.currentEmpty");
+  el("tagSetSave").disabled = state.tags.length === 0;
+
+  const container = el("tagSetList");
+  container.innerHTML = "";
+  if (!state.tagSets.length) {
+    container.appendChild(node("p", "group-empty", t("group.tagSets.empty")));
+    return;
+  }
+
+  state.tagSets.forEach((tagSet) => {
+    const row = node("div", "group-row");
+    const info = node("div", "group-row-info");
+    const title = node("div", "group-row-title");
+    title.append(
+      node("strong", "", tagSet.name),
+      node(
+        "span",
+        "group-mode",
+        tagSet.match_mode === "or"
+          ? t("group.mode.short.or")
+          : t("group.mode.short.and")
+      )
+    );
+    info.appendChild(title);
+    const tags = node("div", "group-tags");
+    (tagSet.tags || []).forEach((tag) => {
+      tags.appendChild(node("span", "tag-chip active", `#${tag}`));
+    });
+    info.appendChild(tags);
+
+    const actions = node("div", "group-row-actions");
+    const apply = node("button", "group-action primary", t("group.tagSets.apply"));
+    apply.type = "button";
+    apply.dataset.tagSetApply = String(tagSet.id);
+    actions.appendChild(apply);
+
+    const remove = node("button", "group-action danger", t("group.tagSets.delete"));
+    remove.type = "button";
+    remove.dataset.tagSetDelete = String(tagSet.id);
+    actions.appendChild(remove);
+
+    row.append(info, actions);
+    container.appendChild(row);
+  });
+}
+
+function renderGroupPanel() {
+  updateGroupSelectionHint();
+  renderCollections();
+  renderTagBulk();
+  renderTagSets();
+  setGroupTab(state.groupTab);
+}
+
+async function loadTagSets() {
+  try {
+    const data = await api("/api/tag-sets");
+    state.tagSets = Array.isArray(data.tag_sets) ? data.tag_sets : [];
+    if (!groupPanel.classList.contains("hidden")) renderTagSets();
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+async function createCollection() {
+  const input = el("collectionName");
+  const name = input.value.trim();
+  if (!name) {
+    showToast(t("group.collection.nameRequired"));
+    input.focus();
+    return;
+  }
+  try {
+    await api("/api/collections", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    input.value = "";
+    await loadCollections();
+    renderGroupPanel();
+    showToast(t("group.collection.created", { name }));
+  } catch (error) {
+    showToast(
+      error.code === "name_exists"
+        ? t("error.nameExists")
+        : error.message || t("group.collection.createError")
+    );
+  }
+}
+
+async function addSelectedToCollection(collectionId) {
+  const collection = state.collections.find(
+    (entry) => String(entry.id) === String(collectionId)
+  );
+  if (!collection) return;
+  if (!state.selection.size) {
+    showToast(t("selection.required"));
+    return;
+  }
+  try {
+    const result = await api(`/api/collections/${collection.id}/works`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: [...state.selection] }),
+    });
+    await loadCollections();
+    renderGroupPanel();
+    showToast(t("selection.addedToCollection", {
+      count: formatNumber(result.added || 0),
+      name: collection.name,
+    }));
+  } catch (error) {
+    showToast(error.message || t("group.collection.addSelectedError"));
+  }
+}
+
+async function renameCollection(collectionId) {
+  const collection = state.collections.find(
+    (entry) => String(entry.id) === String(collectionId)
+  );
+  if (!collection) return;
+  const name = window.prompt(
+    t("group.collection.renamePrompt"), collection.name
+  );
+  if (name === null) return;
+  const trimmed = name.trim();
+  if (!trimmed) {
+    showToast(t("group.collection.nameRequired"));
+    return;
+  }
+  try {
+    await api(`/api/collections/${collection.id}/rename`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: trimmed }),
+    });
+    await loadCollections();
+    renderGroupPanel();
+    showToast(t("group.collection.renamed"));
+  } catch (error) {
+    showToast(
+      error.code === "name_exists"
+        ? t("error.nameExists")
+        : error.message || t("group.collection.renameError")
+    );
+  }
+}
+
+async function deleteCollection(collectionId) {
+  const collection = state.collections.find(
+    (entry) => String(entry.id) === String(collectionId)
+  );
+  if (!collection) return;
+  if (!confirm(t("group.collection.deleteConfirm", { name: collection.name }))) {
+    return;
+  }
+  try {
+    await api(`/api/collections/${collection.id}`, { method: "DELETE" });
+    const wasActive = state.collection === String(collection.id);
+    if (wasActive) {
+      state.collection = "";
+      localStorage.removeItem("pixiv-viewer-collection");
+    }
+    await loadCollections();
+    if (!groupPanel.classList.contains("hidden")) renderGroupPanel();
+    if (wasActive) resetAndLoad();
+    showToast(t("group.collection.deleted"));
+  } catch (error) {
+    showToast(error.message || t("group.collection.deleteError"));
+  }
+}
+
+function addBulkTagFromInput() {
+  const input = el("tagBulkInput");
+  const tag = input.value.trim();
+  if (!tag) return;
+  state.bulkTags.add(tag.slice(0, 200));
+  input.value = "";
+  renderTagBulk();
+  input.focus();
+}
+
+async function addCollectionByTags() {
+  const targetId = el("tagBulkCollection").value;
+  const collection = state.collections.find(
+    (entry) => String(entry.id) === String(targetId)
+  );
+  const tags = [...state.bulkTags];
+  if (!collection) {
+    showToast(t("group.tagBulk.noCollections"));
+    return;
+  }
+  if (!tags.length) {
+    el("tagBulkStatus").textContent = t("group.tagBulk.empty");
+    el("tagBulkStatus").className = "group-status error";
+    return;
+  }
+
+  state.bulkTagMode = el("tagBulkMode").value === "or" ? "or" : "and";
+  const button = el("tagBulkAdd");
+  button.disabled = true;
+  try {
+    const result = await api(`/api/collections/${collection.id}/works`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tags, tag_mode: state.bulkTagMode }),
+    });
+    el("tagBulkStatus").textContent = t("group.tagBulk.added", {
+      matched: formatNumber(result.matched || 0),
+      added: formatNumber(result.added || 0),
+    });
+    el("tagBulkStatus").className = "group-status ok";
+    await loadCollections();
+    renderGroupPanel();
+    if (state.collection === String(collection.id)) resetAndLoad();
+  } catch (error) {
+    el("tagBulkStatus").textContent = error.message || t("group.tagBulk.error");
+    el("tagBulkStatus").className = "group-status error";
+  } finally {
+    button.disabled = state.bulkTags.size === 0;
+  }
+}
+
+async function saveTagSet() {
+  const input = el("tagSetName");
+  const name = input.value.trim();
+  if (!name) {
+    showToast(t("group.tagSets.nameRequired"));
+    input.focus();
+    return;
+  }
+  if (!state.tags.length) {
+    showToast(t("group.tagSets.currentEmpty"));
+    return;
+  }
+  try {
+    await api("/api/tag-sets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name,
+        tags: state.tags,
+        match_mode: state.tagMode,
+      }),
+    });
+    input.value = "";
+    await loadTagSets();
+    renderTagSets();
+    showToast(t("group.tagSets.saved", { name }));
+  } catch (error) {
+    showToast(
+      error.code === "name_exists"
+        ? t("error.nameExists")
+        : error.message || t("group.tagSets.saveError")
+    );
+  }
+}
+
+function applyTagSet(tagSetId) {
+  const tagSet = state.tagSets.find(
+    (entry) => String(entry.id) === String(tagSetId)
+  );
+  if (!tagSet) return;
+  state.tags = [...tagSet.tags];
+  state.tagMode = tagSet.match_mode === "or" ? "or" : "and";
+  closeGroupPanel();
+  updateTagModeUI();
+  loadTags();
+  resetAndLoad();
+  showToast(t("group.tagSets.applied", { name: tagSet.name }));
+}
+
+async function deleteTagSet(tagSetId) {
+  const tagSet = state.tagSets.find(
+    (entry) => String(entry.id) === String(tagSetId)
+  );
+  if (!tagSet) return;
+  if (!confirm(t("group.tagSets.deleteConfirm", { name: tagSet.name }))) return;
+  try {
+    await api(`/api/tag-sets/${tagSet.id}`, { method: "DELETE" });
+    await loadTagSets();
+    if (!groupPanel.classList.contains("hidden")) renderTagSets();
+    showToast(t("group.tagSets.deleted"));
+  } catch (error) {
+    showToast(error.message || t("group.tagSets.deleteError"));
   }
 }
 
@@ -993,7 +1694,7 @@ async function pasteOAuthCode() {
 
 function openSyncPanel() {
   syncPanel.classList.remove("hidden");
-  document.body.classList.add("lb-open");
+  updateBodyLock();
   renderSyncDetail(state.status || {});
   refreshStatus();
   loadLog();
@@ -1002,7 +1703,7 @@ function openSyncPanel() {
 
 function closeSyncPanel() {
   syncPanel.classList.add("hidden");
-  if (!state.lb) document.body.classList.remove("lb-open");
+  updateBodyLock();
 }
 
 async function queueSync(full, accountId = undefined) {
@@ -1069,6 +1770,63 @@ function bindEvents() {
     setAccount(accountSelect.value);
   });
 
+  collectionSelect.addEventListener("change", () => {
+    setCollection(collectionSelect.value);
+  });
+
+  el("selectModeToggle").addEventListener("click", () => {
+    setSelectMode(!state.selectMode);
+  });
+
+  el("bulkSelectAll").addEventListener("click", toggleSelectAllLoaded);
+  el("bulkCancel").addEventListener("click", () => setSelectMode(false));
+
+  el("bulkDelete").addEventListener("click", () => {
+    const count = state.selection.size;
+    if (!count) return;
+    deleteWorks(
+      [...state.selection],
+      t("selection.deleteConfirm", { count: formatNumber(count) })
+    );
+  });
+
+  el("bulkAddCollection").addEventListener("click", () => {
+    if (!state.selection.size) {
+      showToast(t("selection.required"));
+      return;
+    }
+    if (!state.collections.length) {
+      showToast(t("selection.noCollections"));
+      openGroupPanel("collections");
+      el("collectionName").focus();
+      return;
+    }
+    openGroupPanel("collections");
+  });
+
+  el("bulkRemoveCollection").addEventListener("click", async () => {
+    if (!state.collection || !state.selection.size) return;
+    const collection = state.collections.find(
+      (entry) => String(entry.id) === state.collection
+    );
+    if (!collection) return;
+    try {
+      const result = await api(`/api/collections/${collection.id}/works`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: [...state.selection] }),
+      });
+      showToast(t("selection.removedFromCollection", {
+        count: formatNumber(result.removed || 0),
+        name: collection.name,
+      }));
+      await loadCollections();
+      resetAndLoad();
+    } catch (error) {
+      showToast(error.message || t("selection.removeCollectionError"));
+    }
+  });
+
   favoriteFilter.addEventListener("click", () => {
     state.favorites = !state.favorites;
     updateFilterUI();
@@ -1086,14 +1844,19 @@ function bindEvents() {
 
   el("clearFilters").addEventListener("click", () => {
     state.q = "";
-    state.tag = "";
+    state.tags = [];
+    state.tagMode = "and";
     state.artist = "";
     state.favorites = false;
     state.r18 = false;
+    state.collection = "";
     localStorage.setItem("pixiv-viewer-r18", "0");
+    localStorage.removeItem("pixiv-viewer-collection");
     searchInput.value = "";
     artistSelect.value = "";
+    collectionSelect.value = "";
     updateFilterUI();
+    updateCollectionOptions(true);
     loadTags();
     loadArtists();
     resetAndLoad();
@@ -1102,8 +1865,19 @@ function bindEvents() {
   el("tagBar").addEventListener("click", (event) => {
     const chip = event.target.closest(".tag-chip");
     if (!chip) return;
-    state.tag = state.tag === chip.dataset.tag ? "" : chip.dataset.tag;
+    const tag = chip.dataset.tag;
+    if (state.tags.includes(tag)) {
+      state.tags = state.tags.filter((entry) => entry !== tag);
+    } else {
+      state.tags = [...state.tags, tag];
+    }
     loadTags();
+    resetAndLoad();
+  });
+
+  el("tagModeToggle").addEventListener("click", () => {
+    state.tagMode = state.tagMode === "and" ? "or" : "and";
+    updateTagModeUI();
     resetAndLoad();
   });
 
@@ -1116,17 +1890,22 @@ function bindEvents() {
       return;
     }
     const card = event.target.closest(".card");
-    if (card) openLightbox(Number(card.dataset.index));
+    if (!card) return;
+    if (state.selectMode) {
+      toggleSelected(Number(card.dataset.workId));
+      return;
+    }
+    openLightbox(Number(card.dataset.index));
   });
 
   grid.addEventListener("keydown", (event) => {
     if (event.key !== "Enter" && event.key !== " ") return;
     if (event.target.closest("button")) return;
     const card = event.target.closest(".card");
-    if (card) {
-      event.preventDefault();
-      openLightbox(Number(card.dataset.index));
-    }
+    if (!card) return;
+    event.preventDefault();
+    if (state.selectMode) toggleSelected(Number(card.dataset.workId));
+    else openLightbox(Number(card.dataset.index));
   });
 
   el("loadMore").addEventListener("click", loadItems);
@@ -1134,6 +1913,82 @@ function bindEvents() {
   el("syncPill").addEventListener("click", openSyncPanel);
   document.querySelectorAll("[data-close-sync]").forEach((button) => {
     button.addEventListener("click", closeSyncPanel);
+  });
+
+  el("groupButton").addEventListener("click", () => openGroupPanel());
+  document.querySelectorAll("[data-close-group]").forEach((button) => {
+    button.addEventListener("click", closeGroupPanel);
+  });
+  document.querySelectorAll("[data-group-tab]").forEach((button) => {
+    button.addEventListener("click", () => setGroupTab(button.dataset.groupTab));
+  });
+
+  el("collectionCreate").addEventListener("click", createCollection);
+  el("collectionName").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      createCollection();
+    }
+  });
+  el("collectionList").addEventListener("click", (event) => {
+    const view = event.target.closest("[data-collection-view]");
+    if (view) {
+      setCollection(view.dataset.collectionView);
+      closeGroupPanel();
+      return;
+    }
+    const add = event.target.closest("[data-collection-add]");
+    if (add) {
+      addSelectedToCollection(add.dataset.collectionAdd);
+      return;
+    }
+    const rename = event.target.closest("[data-collection-rename]");
+    if (rename) {
+      renameCollection(rename.dataset.collectionRename);
+      return;
+    }
+    const remove = event.target.closest("[data-collection-delete]");
+    if (remove) deleteCollection(remove.dataset.collectionDelete);
+  });
+
+  el("tagBulkCollection").addEventListener("change", () => {
+    state.bulkCollection = el("tagBulkCollection").value;
+  });
+  el("tagBulkMode").addEventListener("change", () => {
+    state.bulkTagMode = el("tagBulkMode").value === "or" ? "or" : "and";
+  });
+  el("tagBulkChips").addEventListener("click", (event) => {
+    const chip = event.target.closest("[data-bulk-tag]");
+    if (!chip) return;
+    const tag = chip.dataset.bulkTag;
+    if (state.bulkTags.has(tag)) state.bulkTags.delete(tag);
+    else state.bulkTags.add(tag);
+    renderTagBulk();
+  });
+  el("tagBulkInput").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      addBulkTagFromInput();
+    }
+  });
+  el("tagBulkInputAdd").addEventListener("click", addBulkTagFromInput);
+  el("tagBulkAdd").addEventListener("click", addCollectionByTags);
+
+  el("tagSetSave").addEventListener("click", saveTagSet);
+  el("tagSetName").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      saveTagSet();
+    }
+  });
+  el("tagSetList").addEventListener("click", (event) => {
+    const apply = event.target.closest("[data-tag-set-apply]");
+    if (apply) {
+      applyTagSet(apply.dataset.tagSetApply);
+      return;
+    }
+    const remove = event.target.closest("[data-tag-set-delete]");
+    if (remove) deleteTagSet(remove.dataset.tagSetDelete);
   });
 
   el("syncAccounts").addEventListener("click", (event) => {
@@ -1198,6 +2053,19 @@ function bindEvents() {
   el("lbClose").addEventListener("click", closeLightbox);
   el("lbNext").addEventListener("click", nextItem);
   el("lbPrev").addEventListener("click", previousItem);
+  el("lbDelete").addEventListener("click", async () => {
+    const item = currentItem();
+    if (!item) return;
+    const title = item.title || t("card.untitled", { id: item.id });
+    const deleted = await deleteWorks(
+      [item.id],
+      t("lightbox.deleteConfirm", { title })
+    );
+    if (deleted) {
+      closeLightbox();
+      showToast(t("lightbox.deleted"));
+    }
+  });
   el("lbFavorite").addEventListener("click", () => {
     const item = currentItem();
     if (item) toggleFavorite(item, el("lbFavorite"));
@@ -1251,10 +2119,15 @@ function bindEvents() {
   });
 
   document.addEventListener("keydown", (event) => {
-    if (lightbox.classList.contains("hidden")) return;
-    if (event.key === "Escape") closeLightbox();
-    else if (event.key === "ArrowRight") nextItem();
-    else if (event.key === "ArrowLeft") previousItem();
+    if (!lightbox.classList.contains("hidden")) {
+      if (event.key === "Escape") closeLightbox();
+      else if (event.key === "ArrowRight") nextItem();
+      else if (event.key === "ArrowLeft") previousItem();
+      return;
+    }
+    if (event.key !== "Escape") return;
+    if (!groupPanel.classList.contains("hidden")) closeGroupPanel();
+    else if (!syncPanel.classList.contains("hidden")) closeSyncPanel();
   });
 
   document.addEventListener("visibilitychange", () => {
@@ -1266,6 +2139,7 @@ function updateLanguage() {
   dateFormatter = createDateFormatter();
   updateFilterUI();
   updateAccountOptions(state.accounts, true);
+  updateCollectionOptions(true);
   if (state.status) {
     updateAccountLine(state.status, state.accounts);
     el("syncLabel").textContent = statusLabel(state.status.state);
@@ -1276,6 +2150,8 @@ function updateLanguage() {
   }
   updateSyncScope();
   updateResultCount();
+  updateTagModeUI();
+  updateBulkBar();
   if (state.items.length) {
     grid.innerHTML = "";
     renderCards(state.items, 0);
@@ -1286,6 +2162,7 @@ function updateLanguage() {
     renderSyncDetail(state.status || {});
     if (el("addAccount").open) loadOAuthPending();
   }
+  if (!groupPanel.classList.contains("hidden")) renderGroupPanel();
   if (!lightbox.classList.contains("hidden")) renderLightbox();
   toggleEmpty();
   setOAuthStatus("");
@@ -1294,6 +2171,7 @@ function updateLanguage() {
 async function init() {
   state.r18 = localStorage.getItem("pixiv-viewer-r18") === "1";
   state.account = localStorage.getItem("pixiv-viewer-account") || "";
+  state.collection = localStorage.getItem("pixiv-viewer-collection") || "";
   updateFilterUI();
   bindEvents();
   document.addEventListener("viewer:langchange", updateLanguage);
@@ -1310,6 +2188,7 @@ async function init() {
     el("loadMore").classList.remove("hidden");
   }
 
+  await loadCollections();
   await refreshStatus();
   loadTags();
   loadArtists();

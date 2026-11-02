@@ -17,9 +17,13 @@ A self-hosted, multi-account pixiv bookmark downloader and web viewer.
 - Incremental sync every 15 minutes, plus manual and full resync from the UI.
 - Add additional accounts from the viewer with OAuth + PKCE — no SSH or
   browser automation required.
-- FastAPI viewer with a Japanese/English UI, search, tags, artists, account
-  filter, R-18 toggle, local favorites, lightbox, keyboard shortcuts, swipe and
-  tap navigation.
+- FastAPI viewer with a Japanese/English UI, search, multi-tag filters
+  (AND/OR), artists, account filter, R-18 toggle, local favorites, lightbox,
+  keyboard shortcuts, swipe and tap navigation.
+- Work collections and saved tag sets for organizing local views, plus a
+  selection mode for adding, removing, or deleting several works at once.
+- Local deletion of individual or selected works. Tombstones keep deleted
+  works out of later index and sync passes without changing pixiv bookmarks.
 - SQLite index, on-demand thumbnails, and a responsive PWA manifest.
 - Docker Compose stack; all data stays on your own disk.
 
@@ -153,7 +157,7 @@ Data layout inside `PIXIV_DATA_DIR`:
 
 ```text
 images/<artist_id> <artist_account>/<work_id>_p00.jpg
-state/gallery.db       SQLite index and local favorites
+state/gallery.db       SQLite index, favorites, collections, tag sets, tombstones
 state/status.json      last sync status
 state/sync.request     on-demand sync queue
 secrets/accounts/      OAuth tokens (0600)
@@ -167,10 +171,30 @@ logs/sync.log          rotated sync log
   centre** to advance.
 - Swipe left/right to move between works, swipe down to close.
 - `←` / `→` to move, `Esc` to close.
-- Account selector, tags, artists, R-18 toggle, and local favorites in the
-  toolbar.
+- Account selector, multiple tags with an AND/OR match switch, artists, R-18
+  toggle, and local favorites in the toolbar.
+- **Selection** selects loaded works for collection changes or local deletion.
+  **Select all loaded** only covers works currently loaded in the grid.
+- **Groups** manages work collections and tag sets. Collections can be
+  created, renamed, deleted, filled from selected works, filled from tags, or
+  shown as a filter. Deleting a collection keeps the works themselves.
+  Tag-based bulk add searches all indexed works, regardless of the current
+  account, collection, or R-18 filter.
+- Tag sets save the current tags and AND/OR mode. Applying one restores that
+  combination, together with any active collection filter.
+- **Local delete** is available in the lightbox and for selected works. It
+  removes the database row and attempts to remove media, sidecars, archives,
+  and thumbnails. pixiv bookmarks are not changed.
 - Sync status shows per-account counts, last sync, errors, and per-account
   sync buttons.
+
+### Local deletion
+
+Deletion records a tombstone in `state/gallery.db`, so a later index or sync
+pass removes the work again instead of restoring it. A full resync can
+re-download an archived work before the next indexing pass; the tombstone then
+removes it and its files. File removal errors are logged, and the pixiv side
+is never modified.
 
 ## Development
 

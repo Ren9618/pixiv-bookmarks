@@ -8,6 +8,15 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Multi-tag filtering with an AND/OR match switch.
+- Selection mode for adding works to collections, removing them, and deleting
+  several local works at once.
+- Work collections with create, rename, delete, selected-work add, tag-based
+  bulk add, and collection filtering.
+- Tag sets that save a tag combination and its AND/OR mode for reuse.
+- Local deletion for single works and selections, with tombstones that keep
+  deleted works out of later index and sync passes. pixiv bookmarks are not
+  changed.
 - Japanese/English UI with a persistent language switch on the viewer and
   login screen.
 - English translations for sync statuses and OAuth errors.
@@ -15,6 +24,8 @@ All notable changes to this project are documented here. The format follows
 ### Changed
 
 - Quieter, flatter dark theme with a solid pixiv-blue accent.
+- Removed the top-left header mark and replaced the logout glyph with an
+  inline SVG that does not depend on system emoji fonts.
 
 ## [1.0.0] - 2026-11-03
 
