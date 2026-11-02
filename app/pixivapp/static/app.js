@@ -49,6 +49,7 @@ const lbImage = el("lbImage");
 const lbVideo = el("lbVideo");
 const lbStage = el("lbStage");
 const lbHint = el("lbHint");
+const mobileNavQuery = window.matchMedia("(max-width: 899px)");
 
 const I18n = window.ViewerI18n;
 const t = (key, variables) => I18n.t(key, variables);
@@ -88,6 +89,8 @@ let toastTimer = null;
 let hintTimer = null;
 let lbPointer = null;
 let requestSeq = 0;
+let lastScrollY = Math.max(0, window.scrollY);
+let scrollFrame = 0;
 
 function showToast(message) {
   const toast = el("toast");
@@ -137,6 +140,123 @@ function debounce(fn, delay) {
     clearTimeout(timer);
     timer = setTimeout(() => fn(...args), delay);
   };
+}
+
+function setChromeHidden(hidden) {
+  document.body.classList.toggle(
+    "chrome-hidden",
+    Boolean(hidden) && mobileNavQuery.matches
+  );
+}
+
+function showChrome() {
+  setChromeHidden(false);
+  lastScrollY = Math.max(0, window.scrollY);
+}
+
+function handleChromeScroll() {
+  if (!mobileNavQuery.matches) {
+    setChromeHidden(false);
+    lastScrollY = Math.max(0, window.scrollY);
+    return;
+  }
+
+  const currentY = Math.max(0, window.scrollY);
+  const delta = currentY - lastScrollY;
+  lastScrollY = currentY;
+
+  if (currentY < 36) {
+    setChromeHidden(false);
+    return;
+  }
+  if (
+    document.activeElement === searchInput
+    || !syncPanel.classList.contains("hidden")
+    || !groupPanel.classList.contains("hidden")
+    || !lightbox.classList.contains("hidden")
+  ) {
+    setChromeHidden(false);
+    return;
+  }
+  if (delta > 9) setChromeHidden(true);
+  else if (delta < -7) setChromeHidden(false);
+}
+
+function bindChromeAutoHide() {
+  window.addEventListener(
+    "scroll",
+    () => {
+      if (scrollFrame) return;
+      scrollFrame = requestAnimationFrame(() => {
+        scrollFrame = 0;
+        handleChromeScroll();
+      });
+    },
+    { passive: true }
+  );
+  mobileNavQuery.addEventListener("change", showChrome);
+  searchInput.addEventListener("focus", () => {
+    showChrome();
+    updateNavState();
+  });
+  searchInput.addEventListener("blur", updateNavState);
+}
+
+function updateNavState() {
+  let active = "all";
+  if (!groupPanel.classList.contains("hidden")) active = "groups";
+  else if (!syncPanel.classList.contains("hidden")) active = "settings";
+  else if (document.activeElement === searchInput || state.q) active = "search";
+  else if (state.favorites) active = "favorites";
+
+  document.querySelectorAll("[data-nav]").forEach((item) => {
+    const isActive = item.dataset.nav === active;
+    item.classList.toggle("active", isActive);
+    if (isActive) item.setAttribute("aria-current", "page");
+    else item.removeAttribute("aria-current");
+  });
+}
+
+function resetViewFilters({
+  favorites = false,
+  resetR18 = false,
+  clearAccount = false,
+} = {}) {
+  state.q = "";
+  state.tags = [];
+  state.tagMode = "and";
+  state.artist = "";
+  state.favorites = Boolean(favorites);
+  state.collection = "";
+  if (resetR18) state.r18 = false;
+  if (clearAccount) {
+    state.account = "";
+    accountSelect.value = "";
+    localStorage.removeItem("pixiv-viewer-account");
+    refreshStatus();
+  }
+
+  if (document.activeElement === searchInput) searchInput.blur();
+  searchInput.value = "";
+  artistSelect.value = "";
+  collectionSelect.value = "";
+  localStorage.removeItem("pixiv-viewer-collection");
+  if (resetR18) localStorage.setItem("pixiv-viewer-r18", "0");
+  updateFilterUI();
+  updateCollectionOptions(true);
+  loadTags();
+  loadArtists();
+  resetAndLoad();
+  showChrome();
+  window.scrollTo({ top: 0, behavior: "auto" });
+}
+
+function focusSearch() {
+  showChrome();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+  searchInput.focus({ preventScroll: true });
+  if (searchInput.value) searchInput.select();
+  updateNavState();
 }
 
 function formatDate(value) {
@@ -477,6 +597,7 @@ function resetAndLoad() {
   emptyBox.classList.add("hidden");
   clearSelection();
   updateResultCount();
+  updateNavState();
   loadItems(requestSeq);
 }
 
@@ -1166,7 +1287,12 @@ async function openGroupPanel(tab = "collections") {
   loadCollections();
   loadTagSets();
   updateBodyLock();
-  if (state.selection.size === 0 && state.groupTab === "collections") {
+  updateNavState();
+  if (
+    !mobileNavQuery.matches
+    && state.selection.size === 0
+    && state.groupTab === "collections"
+  ) {
     el("collectionName").focus();
   }
 }
@@ -1174,6 +1300,7 @@ async function openGroupPanel(tab = "collections") {
 function closeGroupPanel() {
   groupPanel.classList.add("hidden");
   updateBodyLock();
+  updateNavState();
 }
 
 function renderCollections() {
@@ -1695,6 +1822,7 @@ async function pasteOAuthCode() {
 function openSyncPanel() {
   syncPanel.classList.remove("hidden");
   updateBodyLock();
+  updateNavState();
   renderSyncDetail(state.status || {});
   refreshStatus();
   loadLog();
@@ -1704,6 +1832,7 @@ function openSyncPanel() {
 function closeSyncPanel() {
   syncPanel.classList.add("hidden");
   updateBodyLock();
+  updateNavState();
 }
 
 async function queueSync(full, accountId = undefined) {
@@ -1843,23 +1972,7 @@ function bindEvents() {
   });
 
   el("clearFilters").addEventListener("click", () => {
-    state.q = "";
-    state.tags = [];
-    state.tagMode = "and";
-    state.artist = "";
-    state.favorites = false;
-    state.r18 = false;
-    state.collection = "";
-    localStorage.setItem("pixiv-viewer-r18", "0");
-    localStorage.removeItem("pixiv-viewer-collection");
-    searchInput.value = "";
-    artistSelect.value = "";
-    collectionSelect.value = "";
-    updateFilterUI();
-    updateCollectionOptions(true);
-    loadTags();
-    loadArtists();
-    resetAndLoad();
+    resetViewFilters({ resetR18: true });
   });
 
   el("tagBar").addEventListener("click", (event) => {
@@ -1913,6 +2026,26 @@ function bindEvents() {
   el("syncPill").addEventListener("click", openSyncPanel);
   document.querySelectorAll("[data-close-sync]").forEach((button) => {
     button.addEventListener("click", closeSyncPanel);
+  });
+
+  document.querySelectorAll("[data-nav]").forEach((button) => {
+    button.addEventListener("click", () => {
+      showChrome();
+      const action = button.dataset.nav;
+      if (action === "all") {
+        if (state.selectMode) setSelectMode(false);
+        resetViewFilters({ clearAccount: true });
+      } else if (action === "favorites") {
+        if (state.selectMode) setSelectMode(false);
+        resetViewFilters({ favorites: true, clearAccount: true });
+      } else if (action === "groups") {
+        openGroupPanel();
+      } else if (action === "search") {
+        focusSearch();
+      } else if (action === "settings") {
+        openSyncPanel();
+      }
+    });
   });
 
   el("groupButton").addEventListener("click", () => openGroupPanel());
@@ -2174,6 +2307,8 @@ async function init() {
   state.collection = localStorage.getItem("pixiv-viewer-collection") || "";
   updateFilterUI();
   bindEvents();
+  bindChromeAutoHide();
+  updateNavState();
   document.addEventListener("viewer:langchange", updateLanguage);
 
   if ("IntersectionObserver" in window) {

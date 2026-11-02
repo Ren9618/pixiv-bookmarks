@@ -84,7 +84,6 @@ a {
   min-width: 0;
 }
 
-.login-mark,
 .empty-mark {
   display: grid;
   place-items: center;
@@ -94,11 +93,6 @@ a {
   border-radius: 9px;
   font: 700 24px/1 Georgia, "Times New Roman", serif;
   font-style: italic;
-}
-
-.login-mark {
-  color: #fff;
-  background: var(--accent);
 }
 
 .brand-copy {
@@ -233,6 +227,78 @@ a {
 .lang-button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------- navigation */
+
+.app-nav {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 40;
+  display: flex;
+  align-items: stretch;
+  justify-content: space-around;
+  gap: 2px;
+  min-height: calc(58px + var(--safe-bottom));
+  padding: 5px 5px calc(5px + var(--safe-bottom));
+  border-top: 1px solid var(--line);
+  background: rgba(26, 29, 34, 0.97);
+  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.24);
+  transition: transform 220ms ease, opacity 220ms ease;
+}
+
+.app-nav-item {
+  position: relative;
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  min-height: 48px;
+  padding: 3px 2px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.15;
+  cursor: pointer;
+}
+
+.app-nav-item span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-nav-item svg {
+  width: 21px;
+  height: 21px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.app-nav-item:hover {
+  color: var(--text);
+}
+
+.app-nav-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.app-nav-item.active {
+  background: var(--accent-soft);
+  color: var(--accent-text);
 }
 
 /* ---------------------------------------------------------------- layout */
@@ -1302,14 +1368,6 @@ body.lb-open {
   text-align: center;
 }
 
-.login-mark {
-  width: 52px;
-  height: 52px;
-  margin: 0 auto 14px;
-  border-radius: 10px;
-  font-size: 33px;
-}
-
 .login-card h1 {
   margin: 0;
   font-size: 19px;
@@ -1719,6 +1777,32 @@ body.lb-open {
   color: #f2a19c;
 }
 
+@media (max-width: 899px) {
+  .page {
+    padding-bottom: calc(84px + var(--safe-bottom));
+  }
+
+  .toast {
+    bottom: calc(74px + var(--safe-bottom));
+  }
+
+  .topbar {
+    transition: transform 220ms ease, opacity 220ms ease;
+  }
+
+  body.chrome-hidden .topbar {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-100%);
+  }
+
+  body.chrome-hidden .app-nav {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(100%);
+  }
+}
+
 @media (max-width: 560px) {
   .tag-mode {
     min-width: 42px;
@@ -1817,6 +1901,42 @@ body.lb-open {
 }
 
 @media (min-width: 900px) {
+  body:not(.login-body) {
+    padding-left: 216px;
+  }
+
+  .app-nav {
+    top: 0;
+    right: auto;
+    bottom: 0;
+    width: 216px;
+    min-height: 0;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 5px;
+    padding: calc(24px + var(--safe-top)) 14px 18px;
+    border-top: 0;
+    border-right: 1px solid var(--line);
+    box-shadow: none;
+  }
+
+  .app-nav-item {
+    flex: 0 0 auto;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 12px;
+    min-height: 46px;
+    padding: 0 13px;
+    border-radius: 8px;
+    font-size: 12px;
+  }
+
+  .app-nav-item svg {
+    width: 20px;
+    height: 20px;
+  }
+
   .grid {
     grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
   }

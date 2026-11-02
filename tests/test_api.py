@@ -8,6 +8,16 @@ from pixivapp import db, main
 from pixivapp.config import ACCOUNTS_DIR, IMAGES_DIR, THUMBS_DIR
 
 
+def test_templates_include_primary_navigation_without_login_mark():
+    index_html = (main.TEMPLATES_DIR / "index.html").read_text(encoding="utf-8")
+    login_html = (main.TEMPLATES_DIR / "login.html").read_text(encoding="utf-8")
+
+    assert 'id="appNav"' in index_html
+    for action in ("all", "groups", "favorites", "search", "settings"):
+        assert f'data-nav="{action}"' in index_html
+    assert 'class="login-mark"' not in login_html
+
+
 def test_healthz():
     with TestClient(main.app) as client:
         response = client.get("/healthz")

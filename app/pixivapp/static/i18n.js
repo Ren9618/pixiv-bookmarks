@@ -15,6 +15,14 @@
       "header.checking": "確認中",
       "header.logout": "ログアウト",
 
+      "nav.label": "メインナビゲーション",
+      "nav.all": "すべて",
+      "nav.allTitle": "すべての画像",
+      "nav.groups": "グループ",
+      "nav.favorites": "お気に入り",
+      "nav.search": "検索",
+      "nav.settings": "設定",
+
       "filter.label": "フィルター",
       "filter.clear": "クリア",
       "search.placeholder": "タイトル・作者・タグを検索",
@@ -284,6 +292,14 @@
       "header.syncStatus": "Open sync status",
       "header.checking": "Checking…",
       "header.logout": "Log out",
+
+      "nav.label": "Main navigation",
+      "nav.all": "All",
+      "nav.allTitle": "All images",
+      "nav.groups": "Groups",
+      "nav.favorites": "Favorites",
+      "nav.search": "Search",
+      "nav.settings": "Settings",
 
       "filter.label": "Filters",
       "filter.clear": "Clear",

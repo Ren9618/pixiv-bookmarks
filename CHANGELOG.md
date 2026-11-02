@@ -24,8 +24,13 @@ All notable changes to this project are documented here. The format follows
 ### Changed
 
 - Quieter, flatter dark theme with a solid pixiv-blue accent.
-- Removed the top-left header mark and replaced the logout glyph with an
-  inline SVG that does not depend on system emoji fonts.
+- Removed the top-left brand marks from the viewer and login screen, and
+  replaced the logout glyph with an inline SVG that does not depend on system
+  emoji fonts.
+- Added primary navigation for All, Groups, Favorites, Search, and Settings.
+  It appears on the side on desktop and at the bottom on mobile.
+- On mobile, the header and bottom navigation hide while scrolling down and
+  return when scrolling up or reaching the top of the page.
 
 ## [1.0.0] - 2026-11-03
 

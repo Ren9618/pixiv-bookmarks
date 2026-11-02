@@ -24,6 +24,8 @@ A self-hosted, multi-account pixiv bookmark downloader and web viewer.
   selection mode for adding, removing, or deleting several works at once.
 - Local deletion of individual or selected works. Tombstones keep deleted
   works out of later index and sync passes without changing pixiv bookmarks.
+- Primary navigation on the side for desktop and at the bottom for mobile,
+  with All, Groups, Favorites, Search, and Settings.
 - SQLite index, on-demand thumbnails, and a responsive PWA manifest.
 - Docker Compose stack; all data stays on your own disk.
 
@@ -185,6 +187,10 @@ logs/sync.log          rotated sync log
 - **Local delete** is available in the lightbox and for selected works. It
   removes the database row and attempts to remove media, sidecars, archives,
   and thumbnails. pixiv bookmarks are not changed.
+- **Navigation** sits on the left on desktop and at the bottom on mobile, with
+  All, Groups, Favorites, Search, and Settings. On mobile, scrolling down hides
+  the header and bottom navigation; scrolling up or returning to the top shows
+  them again.
 - Sync status shows per-account counts, last sync, errors, and per-account
   sync buttons.
 
