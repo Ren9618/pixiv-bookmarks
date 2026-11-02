@@ -269,6 +269,17 @@ can optionally place a Netscape-format cookie file at
 - The app does not send telemetry.
 - To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
+## Support
+
+This project is free and maintained by a single developer. If it is useful to
+you, donations toward continued development and server costs are appreciated:
+
+- [GitHub Sponsors](https://github.com/sponsors/Ren9618)
+- [Stripe donation page](https://buy.stripe.com/5kQ9AU8Xva8T7tAbnj67S00)
+  (one-time, any amount from ¥100)
+
+Donations are voluntary and do not entitle the donor to features or support.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
