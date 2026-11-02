@@ -12,6 +12,10 @@ All notable changes to this project are documented here. The format follows
   login screen.
 - English translations for sync statuses and OAuth errors.
 
+### Changed
+
+- Quieter, flatter dark theme with a solid pixiv-blue accent.
+
 ## [1.0.0] - 2026-11-03
 
 ### Added
