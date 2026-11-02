@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security report
+    url: https://github.com/Ren9618/pixiv-bookmarks/security/policy
+    about: Report vulnerabilities privately; do not open a public issue.
+  - name: Questions and ideas
+    url: https://github.com/Ren9618/pixiv-bookmarks/discussions
+    about: Ask usage questions or discuss ideas (if Discussions is enabled).

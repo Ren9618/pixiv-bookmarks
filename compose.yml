@@ -1,0 +1,72 @@
+name: pixiv-bookmarks
+
+x-common: &common
+  image: pixiv-bookmarks:local
+  build: ./app
+  init: true
+  restart: unless-stopped
+  user: "${PUID:-1000}:${PGID:-1000}"
+  security_opt:
+    - no-new-privileges:true
+  volumes:
+    - "${PIXIV_DATA_DIR:-./data}:/data"
+  environment:
+    DATA_DIR: /data
+    TZ: "${TZ:-Asia/Tokyo}"
+    HOME: /data/state/home
+    XDG_CACHE_HOME: /data/state/cache
+    TMPDIR: /data/state/tmp
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  sync:
+    <<: *common
+    container_name: pixiv-sync
+    environment:
+      DATA_DIR: /data
+      TZ: "${TZ:-Asia/Tokyo}"
+      HOME: /data/state/home
+      XDG_CACHE_HOME: /data/state/cache
+      TMPDIR: /data/state/tmp
+      SYNC_INTERVAL_MINUTES: "${SYNC_INTERVAL_MINUTES:-15}"
+    command: ["python", "-m", "pixivapp.sync"]
+    stop_grace_period: 30s
+
+  viewer:
+    <<: *common
+    container_name: pixiv-viewer
+    environment:
+      DATA_DIR: /data
+      TZ: "${TZ:-Asia/Tokyo}"
+      HOME: /data/state/home
+      XDG_CACHE_HOME: /data/state/cache
+      TMPDIR: /data/state/tmp
+      VIEWER_PASSWORD: "${VIEWER_PASSWORD:-}"
+      VIEWER_SECRET: "${VIEWER_SECRET:-}"
+      SYNC_INTERVAL_MINUTES: "${SYNC_INTERVAL_MINUTES:-15}"
+    depends_on:
+      - sync
+    command:
+      - uvicorn
+      - pixivapp.main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8899"
+      - --no-access-log
+    ports:
+      - "${VIEWER_BIND:-127.0.0.1}:${VIEWER_PORT:-8899}:8899"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8899/healthz', timeout=3).status == 200 else 1)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
