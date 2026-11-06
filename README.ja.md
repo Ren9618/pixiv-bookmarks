@@ -216,6 +216,7 @@ sudo chown -R "$(id -u):$(id -g)" /path/to/pixiv-data
 
 このプロジェクトは個人開発の無料ツールです。役に立ったら、開発継続とサーバー維持費へのご支援をいただけると助かります。
 
+- [GitHub Sponsors](https://github.com/sponsors/Ren9618)
 - [Stripeの寄付ページ](https://buy.stripe.com/5kQ9AU8Xva8T7tAbnj67S00)（1回のみ、¥100から自由な金額）
 
 寄付は任意で、機能追加やサポートの対価ではありません。
