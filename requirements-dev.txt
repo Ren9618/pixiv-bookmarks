@@ -1,4 +1,4 @@
 -r app/requirements.txt
-pytest>=8.3,<9
-httpx2>=2,<3
-ruff>=0.8,<1
+pytest>=9.2.0,<10
+httpx2>=2.16.0,<3
+ruff>=0.17.4,<1
